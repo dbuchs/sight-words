@@ -328,6 +328,68 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
 .badge.status-needs_work { background: #ffd6d6; color: #c0392b; }
 .badge.status-unseen     { background: #e2e8f0; color: #4a5568; }
 
+/* ── Student selector ── */
+.student-select-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: .5rem;
+  margin-bottom: .5rem;
+}
+.student-label {
+  font-size: .9rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+.student-row {
+  display: flex;
+  gap: .5rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.student-select {
+  flex: 1;
+  min-width: 0;
+  padding: .45rem .75rem;
+  border: 2px solid #d0daf0;
+  border-radius: 999px;
+  font-size: 1rem;
+  background: #fff;
+  color: var(--text);
+  outline: none;
+  cursor: pointer;
+}
+.student-select:focus { border-color: var(--primary); }
+.student-input {
+  flex: 1;
+  padding: .45rem .75rem;
+  border: 2px solid #d0daf0;
+  border-radius: 999px;
+  font-size: .95rem;
+  outline: none;
+}
+.student-input:focus { border-color: var(--primary); }
+.new-student-form {
+  display: flex;
+  gap: .5rem;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-top: .25rem;
+}
+.btn-sm {
+  font-size: .85rem !important;
+  padding: .35rem 1rem !important;
+}
+
+/* ── Teacher student bar ── */
+.teacher-student-bar {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+
 @media (max-width: 600px) {
   .sentence { font-size: 1.4rem; }
   .card { padding: 1.5rem 1rem; }
