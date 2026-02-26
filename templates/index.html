@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sight Words – Let's Read!</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <span class="logo">⭐ Sight Words</span>
+      <a class="teacher-link" href="/teacher">Teacher View 📋</a>
+    </div>
+  </header>
+
+  <main id="app">
+
+    <!-- ── START SCREEN ── -->
+    <section id="start-screen" class="card screen">
+      <div class="mascot">🦉</div>
+      <h1>Let's Learn New Words!</h1>
+      <p>Listen, read, and click the right word!</p>
+      <button id="btn-start" class="btn-primary big-btn">Start Learning ▶</button>
+    </section>
+
+    <!-- ── LESSON SCREEN ── -->
+    <section id="lesson-screen" class="card screen hidden">
+
+      <!-- Progress bar -->
+      <div class="lesson-header">
+        <span id="phase-label" class="phase-badge">Listen</span>
+        <div class="sight-word-badge">
+          Word of the day: <strong id="sight-word-display"></strong>
+        </div>
+      </div>
+
+      <!-- Sentence display -->
+      <div id="sentence-area">
+        <p id="sentence-text" class="sentence"></p>
+      </div>
+
+      <!-- Status / instructions -->
+      <div id="instruction-area" class="instruction-box"></div>
+
+      <!-- Feedback overlay -->
+      <div id="feedback" class="feedback hidden"></div>
+
+      <!-- Control buttons -->
+      <div class="btn-row">
+        <button id="btn-replay" class="btn-secondary hidden">🔊 Replay</button>
+        <button id="btn-next" class="btn-primary hidden">Next ➜</button>
+      </div>
+
+      <!-- Phase dots -->
+      <div class="phase-dots">
+        <span class="dot" id="dot-0"></span>
+        <span class="dot" id="dot-1"></span>
+        <span class="dot" id="dot-2"></span>
+        <span class="dot" id="dot-3"></span>
+      </div>
+    </section>
+
+    <!-- ── COMPLETE SCREEN ── -->
+    <section id="complete-screen" class="card screen hidden">
+      <div class="mascot">🎉</div>
+      <h2>Great job!</h2>
+      <div id="round-summary"></div>
+      <button id="btn-again" class="btn-primary big-btn">Next Lesson ▶</button>
+    </section>
+
+  </main>
+
+  <!-- Audio element for OpenAI TTS fallback -->
+  <audio id="tts-audio"></audio>
+
+  <script src="/static/js/app.js"></script>
+</body>
+</html>

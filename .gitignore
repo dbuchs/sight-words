@@ -1,0 +1,11 @@
+# Database (runtime artifact)
+progress.db
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.env
+
+# Flask session
+flask_session/
