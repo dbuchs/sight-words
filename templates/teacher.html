@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Teacher View – Sight Words</title>
+  <link rel="stylesheet" href="/static/css/style.css" />
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <span class="logo">⭐ Sight Words</span>
+      <a class="teacher-link" href="/">Student View 📖</a>
+    </div>
+  </header>
+
+  <main class="teacher-main">
+    <h1>Progress Dashboard</h1>
+    <p class="subtitle">Track each student's sight-word mastery.</p>
+
+    <!-- Legend -->
+    <div class="legend">
+      <span class="badge status-learned">Learned ✓</span>
+      <span class="badge status-learning">Learning</span>
+      <span class="badge status-needs_work">Needs Work ⚠</span>
+      <span class="badge status-unseen">Not Yet Seen</span>
+    </div>
+
+    {% for level in levels %}
+    <section class="level-section">
+      <h2 class="level-title">{{ level | replace('-', ' ') | title }}</h2>
+      <div class="word-grid">
+        {% for w in grouped[level] %}
+        <div class="word-card status-{{ w.status }}" title="{{ w.display_word }}: {{ w.correct }}/{{ w.attempts }} correct ({{ w.accuracy }}%)">
+          <span class="wc-word">{{ w.display_word }}</span>
+          <div class="wc-bar-wrap">
+            <div class="wc-bar" style="width: {{ w.accuracy }}%;"></div>
+          </div>
+          <div class="wc-stats">
+            {% if w.attempts > 0 %}
+              {{ w.accuracy }}% &nbsp;·&nbsp; {{ w.attempts }} tries
+            {% else %}
+              —
+            {% endif %}
+          </div>
+          <span class="wc-status-icon">
+            {% if w.status == 'learned' %}✓
+            {% elif w.status == 'learning' %}…
+            {% elif w.status == 'needs_work' %}⚠
+            {% else %}·
+            {% endif %}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+  </main>
+</body>
+</html>
