@@ -1,23 +1,25 @@
 /**
  * Sight Words Learning App
  * Lesson flow:
- *   Phase 0 – Demo: app reads sentence 1 aloud, word-by-word highlighting
- *   Phase 1 – Practice: student reads sentence 2; then click-to-identify the sight word
- *   Phase 2 – Test word 1 from sentence 2
- *   Phase 3 – Test word 2 from sentence 2
+ *   Phase 0 - Demo: app reads sentence 1 aloud (OpenAI TTS), word-by-word highlighting
+ *   Phase 1 - Practice: student reads sentence 2; then click-to-identify the sight word
+ *   Phase 2 - Test word 1 from sentence 2
+ *   Phase 3 - Test word 2 from sentence 2
  *   Complete screen
  */
 
 "use strict";
 
-// ── State ──────────────────────────────────────────────────────────────────
+// State
 let lesson = null;          // data from /api/generate-lesson
 let phase = 0;              // 0-3
 let testQueue = [];         // [ { word, isSightWord } ]
 let currentTest = null;
 let roundResults = [];      // { word, correct }
+let currentStudentId = null;  // active student id (integer)
+let lastSightWord = "";     // last lesson's sight word -- avoid repeating
 
-// ── DOM refs ───────────────────────────────────────────────────────────────
+// DOM refs
 const startScreen    = document.getElementById("start-screen");
 const lessonScreen   = document.getElementById("lesson-screen");
 const completeScreen = document.getElementById("complete-screen");
@@ -33,73 +35,135 @@ const btnStart       = document.getElementById("btn-start");
 const btnAgain       = document.getElementById("btn-again");
 const dots           = [0,1,2,3].map(i => document.getElementById("dot-" + i));
 
-// ── Web Speech API ─────────────────────────────────────────────────────────
-const synth = window.speechSynthesis;
+// Student UI refs
+const studentSelect    = document.getElementById("student-select");
+const btnAddStudent    = document.getElementById("btn-add-student");
+const newStudentForm   = document.getElementById("new-student-form");
+const newStudentName   = document.getElementById("new-student-name");
+const btnSaveStudent   = document.getElementById("btn-save-student");
+const btnCancelStudent = document.getElementById("btn-cancel-student");
 
-function speak(text, { rate = 0.85, onWord = null, onEnd = null } = {}) {
-  synth.cancel();
-  const utter = new SpeechSynthesisUtterance(text);
-  utter.rate = rate;
-  utter.pitch = 1.1;
-
-  // Try to pick a pleasant English voice
-  const voices = synth.getVoices();
-  const preferred = voices.find(v =>
-    v.lang.startsWith("en") && (v.name.includes("Samantha") || v.name.includes("Google") || v.name.includes("Microsoft"))
-  ) || voices.find(v => v.lang.startsWith("en")) || voices[0];
-  if (preferred) utter.voice = preferred;
-
-  if (onWord) utter.addEventListener("boundary", onWord);
-  if (onEnd)  utter.addEventListener("end", onEnd);
-  synth.speak(utter);
+// Student helpers
+function getStudentId() {
+  const val = studentSelect && studentSelect.value;
+  return val ? parseInt(val, 10) : 1;
 }
 
-function speakSentenceWithHighlight(sentence, tokenEls, onEnd) {
-  // Some browsers don't fire boundary events; we fall back to timing.
-  let boundaryFired = false;
+if (btnAddStudent) {
+  btnAddStudent.addEventListener("click", () => {
+    newStudentForm.classList.remove("hidden");
+    newStudentName.focus();
+  });
+}
 
-  function highlightWord(idx) {
-    tokenEls.forEach(el => el.classList.remove("speaking"));
-    if (idx < tokenEls.length) tokenEls[idx].classList.add("speaking");
-  }
+if (btnCancelStudent) {
+  btnCancelStudent.addEventListener("click", () => {
+    newStudentForm.classList.add("hidden");
+    newStudentName.value = "";
+  });
+}
 
-  speak(sentence, {
-    onWord: (e) => {
-      if (e.name !== "word") return;
-      boundaryFired = true;
-      // Find which token index corresponds to this char offset
-      let charCount = 0;
-      const rawWords = sentence.split(/\s+/);
-      for (let i = 0; i < rawWords.length; i++) {
-        if (e.charIndex >= charCount && e.charIndex < charCount + rawWords[i].length) {
-          highlightWord(i);
-          break;
-        }
-        charCount += rawWords[i].length + 1;
-      }
-    },
-    onEnd: () => {
-      tokenEls.forEach(el => el.classList.remove("speaking"));
-      if (onEnd) onEnd();
+if (btnSaveStudent) {
+  btnSaveStudent.addEventListener("click", async () => {
+    const name = newStudentName.value.trim();
+    if (!name) return;
+    const res = await fetch("/api/students", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    });
+    if (res.ok) {
+      const student = await res.json();
+      const opt = document.createElement("option");
+      opt.value = student.id;
+      opt.textContent = student.name;
+      studentSelect.appendChild(opt);
+      studentSelect.value = student.id;
+      newStudentForm.classList.add("hidden");
+      newStudentName.value = "";
+    } else {
+      const err = await res.json();
+      alert(err.error || "Could not save student.");
     }
   });
-
-  // Fallback timer if boundary events never fire
-  setTimeout(() => {
-    if (!boundaryFired) {
-      const msPerWord = (sentence.split(/\s+/).length > 0)
-        ? Math.round(3200 / sentence.split(/\s+/).length)
-        : 600;
-      let idx = 0;
-      const iv = setInterval(() => {
-        highlightWord(idx++);
-        if (idx >= tokenEls.length) clearInterval(iv);
-      }, msPerWord);
-    }
-  }, 400);
 }
 
-// ── Build sentence tokens ──────────────────────────────────────────────────
+// OpenAI TTS
+const ttsAudio = document.getElementById("tts-audio");
+let ttsObjectUrl = null;
+
+async function speak(text, { onEnd = null } = {}) {
+  try {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) throw new Error("TTS request failed");
+    const blob = await res.blob();
+    if (ttsObjectUrl) URL.revokeObjectURL(ttsObjectUrl);
+    ttsObjectUrl = URL.createObjectURL(blob);
+    ttsAudio.src = ttsObjectUrl;
+    ttsAudio.onended = onEnd || null;
+    await ttsAudio.play();
+  } catch (err) {
+    console.warn("TTS error:", err);
+    if (onEnd) onEnd();
+  }
+}
+
+async function speakSentenceWithHighlight(sentence, tokenEls, onEnd) {
+  try {
+    const res = await fetch("/api/tts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text: sentence }),
+    });
+    if (!res.ok) throw new Error("TTS request failed");
+    const blob = await res.blob();
+    if (ttsObjectUrl) URL.revokeObjectURL(ttsObjectUrl);
+    ttsObjectUrl = URL.createObjectURL(blob);
+    ttsAudio.src = ttsObjectUrl;
+
+    ttsAudio.onloadedmetadata = () => {
+      const durationMs = ttsAudio.duration * 1000;
+      const words = sentence.split(/\s+/);
+      const msPerWord = durationMs / words.length;
+      let idx = 0;
+      const iv = setInterval(() => {
+        tokenEls.forEach(el => el.classList.remove("speaking"));
+        if (idx < tokenEls.length) tokenEls[idx].classList.add("speaking");
+        idx++;
+        if (idx >= tokenEls.length) clearInterval(iv);
+      }, msPerWord);
+    };
+
+    ttsAudio.onended = () => {
+      tokenEls.forEach(el => el.classList.remove("speaking"));
+      if (onEnd) onEnd();
+    };
+
+    await ttsAudio.play();
+  } catch (err) {
+    console.warn("TTS error:", err);
+    // Fallback timing without audio
+    const words = sentence.split(/\s+/);
+    const msPerWord = 600;
+    let idx = 0;
+    const iv = setInterval(() => {
+      tokenEls.forEach(el => el.classList.remove("speaking"));
+      if (idx < tokenEls.length) tokenEls[idx].classList.add("speaking");
+      idx++;
+      if (idx >= tokenEls.length) {
+        clearInterval(iv);
+        tokenEls.forEach(el => el.classList.remove("speaking"));
+        if (onEnd) onEnd();
+      }
+    }, msPerWord);
+  }
+}
+
+// Build sentence tokens
 function buildTokens(sentence, sightWord, clickable = false) {
   sentenceEl.innerHTML = "";
   const rawWords = sentence.split(/\s+/);
@@ -127,7 +191,7 @@ function getTokenEls() {
   return Array.from(sentenceEl.querySelectorAll(".word-token"));
 }
 
-// ── Phase management ───────────────────────────────────────────────────────
+// Phase management
 function setPhase(p) {
   phase = p;
   dots.forEach((d, i) => {
@@ -148,23 +212,30 @@ function showFeedback(msg, type) {
   setTimeout(() => feedbackEl.classList.add("hidden"), 1800);
 }
 
-// ── Lesson flow ────────────────────────────────────────────────────────────
+// Lesson flow
 async function loadLesson(wordOverride) {
   showScreen(lessonScreen);
   setPhase(0);
   btnReplay.classList.add("hidden");
   btnNext.classList.add("hidden");
-  sentenceEl.innerHTML = "…loading…";
-  setInstruction("Getting your lesson ready…");
+  sentenceEl.innerHTML = "...loading...";
+  setInstruction("Getting your lesson ready...");
 
-  const body = wordOverride ? JSON.stringify({ word: wordOverride }) : "{}";
+  currentStudentId = getStudentId();
+  const body = {
+    student_id: currentStudentId,
+    previous_word: lastSightWord,
+  };
+  if (wordOverride) body.word = wordOverride;
+
   const res = await fetch("/api/generate-lesson", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body
+    body: JSON.stringify(body),
   });
   lesson = await res.json();
   roundResults = [];
+  lastSightWord = lesson.sight_word;
 
   sightWordDisplay.textContent = lesson.sight_word;
   phaseLabel.textContent = "Listen";
@@ -186,15 +257,13 @@ function runPhase0() {
   btnNext.classList.add("hidden");
 
   const tokens = buildTokens(lesson.demo_sentence, lesson.sight_word, false);
-  setInstruction("🔊 Listen carefully! The <u>underlined word</u> is our new sight word.");
+  setInstruction("Listen carefully! The <u>underlined word</u> is our new sight word.");
 
-  // Small delay so student can see the sentence before it's read
   setTimeout(() => {
     speakSentenceWithHighlight(lesson.demo_sentence, tokens, () => {
-      // After reading, show Replay + Next
       btnReplay.classList.remove("hidden");
       btnNext.classList.remove("hidden");
-      btnNext.textContent = "I'm ready to read ▶";
+      btnNext.textContent = "I'm ready to read";
       btnNext.onclick = runPhase1;
 
       btnReplay.onclick = () => {
@@ -212,10 +281,9 @@ function runPhase1() {
   btnNext.classList.add("hidden");
 
   buildTokens(lesson.practice_sentence, lesson.sight_word, false);
-  setInstruction("📖 Now you read this sentence out loud!");
+  setInstruction("Now you read this sentence out loud!");
 
-  // Give 4 seconds for the student to read, then start testing
-  btnNext.textContent = "I read it! ▶";
+  btnNext.textContent = "I read it!";
   btnNext.classList.remove("hidden");
   btnNext.onclick = startTestQueue;
 }
@@ -233,17 +301,15 @@ function nextTest() {
     return;
   }
   currentTest = testQueue.shift();
-  // Phase 1 = sight-word test, 2 = first extra word, 3 = second extra word
   const dotIdx = Math.min(4 - testQueue.length, 3);
   setPhase(dotIdx);
   phaseLabel.textContent = "Find it";
 
-  // Rebuild tokens as clickable (keep sight-word underline visible)
   buildTokens(lesson.practice_sentence, lesson.sight_word, true);
 
-  const cue = `👆 Click on the word: <strong>"${currentTest.word}"</strong>`;
+  const cue = `Click on the word: <strong>"${currentTest.word}"</strong>`;
   setInstruction(cue);
-  speak(`Click on the word: ${currentTest.word}`, { rate: 0.8 });
+  speak(`Click on the word: ${currentTest.word}`);
 }
 
 function onWordClick(e) {
@@ -251,30 +317,27 @@ function onWordClick(e) {
   const target  = currentTest.word.replace(/[^a-zA-Z'-]/g, "").toLowerCase();
   const correct = clicked === target;
 
-  // Visual feedback on the token
   e.currentTarget.classList.add(correct ? "correct-flash" : "wrong-flash");
   setTimeout(() => {
     e.currentTarget.classList.remove("correct-flash", "wrong-flash");
   }, 600);
 
-  // Record progress
   fetch("/api/record-progress", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ word: currentTest.word, correct })
+    body: JSON.stringify({ word: currentTest.word, correct, student_id: currentStudentId })
   });
 
   roundResults.push({ word: currentTest.word, correct });
 
   if (correct) {
-    showFeedback("⭐ Yes! Great job!", "correct");
+    showFeedback("Yes! Great job!", "correct");
     speak("Great job!");
   } else {
     showFeedback(`That's "${clicked}". The word was "${currentTest.word}".`, "wrong");
     speak(`Not quite. The word was ${currentTest.word}.`);
   }
 
-  // Disable further clicks, wait then move on
   getTokenEls().forEach(el => {
     el.classList.remove("clickable");
     el.removeEventListener("click", onWordClick);
@@ -283,7 +346,7 @@ function onWordClick(e) {
   setTimeout(nextTest, 2000);
 }
 
-// ── Complete screen ────────────────────────────────────────────────────────
+// Complete screen
 function runComplete() {
   showScreen(completeScreen);
   const correct = roundResults.filter(r => r.correct).length;
@@ -296,18 +359,13 @@ function runComplete() {
   speak(correct === total ? "Amazing! You got them all right!" : "Good work! Keep practising!");
 }
 
-// ── Screen helper ──────────────────────────────────────────────────────────
+// Screen helper
 function showScreen(target) {
   [startScreen, lessonScreen, completeScreen].forEach(s => {
     s.classList.toggle("hidden", s !== target);
   });
 }
 
-// ── Event listeners ────────────────────────────────────────────────────────
+// Event listeners
 btnStart.addEventListener("click", () => loadLesson(null));
 btnAgain.addEventListener("click", () => loadLesson(null));
-
-// Ensure voices are loaded (Chrome lazy-loads them)
-if (synth.onvoiceschanged !== undefined) {
-  synth.onvoiceschanged = () => {};
-}
