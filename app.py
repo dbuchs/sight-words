@@ -82,6 +82,8 @@ def _generate_sentence(sight_word: str, additional_context: str = "") -> str:
         temperature=0.8,
     )
     sentence = response.choices[0].message.content.strip().strip('"').strip("'")
+    if sentence and sentence[-1] not in ".!?":
+        sentence += "."
     return sentence
 
 
