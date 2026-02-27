@@ -95,10 +95,27 @@ let ttsObjectUrl = null;
 const ttsCache = new Map(); // text -> Blob (avoids repeated round-trips for frequent phrases)
 
 function showAudioPending() {
-  audioPendingEl && audioPendingEl.classList.remove("hidden");
+  if (!audioPendingEl) return;
+  audioPendingEl.classList.remove("hidden", "is-playing", "is-done");
+}
+function showAudioPlaying() {
+  if (!audioPendingEl) return;
+  audioPendingEl.classList.remove("hidden", "is-done");
+  audioPendingEl.classList.add("is-playing");
 }
 function hideAudioPending() {
-  audioPendingEl && audioPendingEl.classList.add("hidden");
+  if (!audioPendingEl) return;
+  audioPendingEl.classList.remove("is-playing");
+  audioPendingEl.classList.add("is-done");
+  setTimeout(() => {
+    audioPendingEl.classList.add("hidden");
+    audioPendingEl.classList.remove("is-done");
+  }, 1200);
+}
+function resetAudioPending() {
+  if (!audioPendingEl) return;
+  audioPendingEl.classList.add("hidden");
+  audioPendingEl.classList.remove("is-playing", "is-done");
 }
 
 async function fetchTtsBlobCached(text) {
@@ -125,10 +142,11 @@ async function speak(text, { onEnd = null } = {}) {
       hideAudioPending();
       if (onEnd) onEnd();
     };
+    showAudioPlaying();
     await ttsAudio.play();
   } catch (err) {
     console.warn("TTS error:", err);
-    hideAudioPending();
+    resetAudioPending();
     if (onEnd) onEnd();
   }
 }
@@ -140,7 +158,7 @@ async function speakSentenceWithHighlight(sentence, tokenEls, onEnd) {
     if (ttsObjectUrl) URL.revokeObjectURL(ttsObjectUrl);
     ttsObjectUrl = URL.createObjectURL(blob);
     ttsAudio.src = ttsObjectUrl;
-    hideAudioPending();
+    showAudioPlaying();
 
     ttsAudio.onloadedmetadata = () => {
       const durationMs = ttsAudio.duration * 1000;
@@ -157,13 +175,14 @@ async function speakSentenceWithHighlight(sentence, tokenEls, onEnd) {
 
     ttsAudio.onended = () => {
       tokenEls.forEach(el => el.classList.remove("speaking"));
+      hideAudioPending();
       if (onEnd) onEnd();
     };
 
     await ttsAudio.play();
   } catch (err) {
     console.warn("TTS error:", err);
-    hideAudioPending();
+    resetAudioPending();
     // Fallback timing without audio
     const words = sentence.split(/\s+/);
     const msPerWord = 600;

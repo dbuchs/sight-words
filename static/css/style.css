@@ -200,23 +200,61 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: .4rem;
   font-size: .9rem;
   font-weight: 600;
   color: var(--primary);
   background: #dbeafe;
   border-radius: 999px;
-  padding: .3rem 1rem;
+  padding: .35rem 1.25rem;
+  min-width: 11rem;  /* wide enough that text swaps don't cause layout shift */
   width: fit-content;
   margin: 0 auto;
+  transition: background .3s, color .3s;
 }
-.audio-icon {
+
+/* Show only the relevant child state */
+.audio-pending .ap-loading,
+.audio-pending .ap-playing,
+.audio-pending .ap-done { display: none; }
+
+.audio-pending:not(.is-playing):not(.is-done) .ap-loading {
+  display: inline-flex; align-items: center; gap: .45rem;
+}
+.audio-pending.is-playing .ap-playing {
+  display: inline-flex; align-items: center; gap: .45rem;
+}
+.audio-pending.is-done .ap-done {
+  display: inline-flex; align-items: center; gap: .45rem;
+}
+
+/* Spinner (loading state) */
+.audio-spinner {
   display: inline-block;
-  animation: speakerPulse 1s ease-in-out infinite;
+  flex-shrink: 0;
+  width: 14px;
+  height: 14px;
+  border: 2.5px solid rgba(91,141,238,.3);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
 }
-@keyframes speakerPulse {
-  0%, 100% { transform: scale(1);    opacity: 1; }
-  50%       { transform: scale(1.4); opacity: .6; }
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Playing state: pulsing glow on the badge */
+.audio-pending.is-playing {
+  animation: glowPulse 1.2s ease-in-out infinite;
+}
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(91,141,238,.55); }
+  50%       { box-shadow: 0 0 0 7px rgba(91,141,238,.0); }
+}
+
+/* Done state: green */
+.audio-pending.is-done {
+  background: #d1fae5;
+  color: #065f46;
 }
 
 /* ── Instructions ── */
