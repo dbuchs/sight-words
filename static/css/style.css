@@ -195,6 +195,30 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
   75%       { transform: translateX(6px); }
 }
 
+/* ── Audio pending indicator ── */
+.audio-pending {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .4rem;
+  font-size: .9rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: #dbeafe;
+  border-radius: 999px;
+  padding: .3rem 1rem;
+  width: fit-content;
+  margin: 0 auto;
+}
+.audio-icon {
+  display: inline-block;
+  animation: speakerPulse 1s ease-in-out infinite;
+}
+@keyframes speakerPulse {
+  0%, 100% { transform: scale(1);    opacity: 1; }
+  50%       { transform: scale(1.4); opacity: .6; }
+}
+
 /* ── Instructions ── */
 .instruction-box {
   background: #f0f6ff;

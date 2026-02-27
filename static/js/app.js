@@ -90,40 +90,57 @@ if (btnSaveStudent) {
 
 // OpenAI TTS
 const ttsAudio = document.getElementById("tts-audio");
+const audioPendingEl = document.getElementById("audio-pending");
 let ttsObjectUrl = null;
+const ttsCache = new Map(); // text -> Blob (avoids repeated round-trips for frequent phrases)
+
+function showAudioPending() {
+  audioPendingEl && audioPendingEl.classList.remove("hidden");
+}
+function hideAudioPending() {
+  audioPendingEl && audioPendingEl.classList.add("hidden");
+}
+
+async function fetchTtsBlobCached(text) {
+  if (ttsCache.has(text)) return ttsCache.get(text);
+  const res = await fetch("/api/tts", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ text }),
+  });
+  if (!res.ok) throw new Error("TTS request failed");
+  const blob = await res.blob();
+  ttsCache.set(text, blob);
+  return blob;
+}
 
 async function speak(text, { onEnd = null } = {}) {
+  showAudioPending();
   try {
-    const res = await fetch("/api/tts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text }),
-    });
-    if (!res.ok) throw new Error("TTS request failed");
-    const blob = await res.blob();
+    const blob = await fetchTtsBlobCached(text);
     if (ttsObjectUrl) URL.revokeObjectURL(ttsObjectUrl);
     ttsObjectUrl = URL.createObjectURL(blob);
     ttsAudio.src = ttsObjectUrl;
-    ttsAudio.onended = onEnd || null;
+    ttsAudio.onended = () => {
+      hideAudioPending();
+      if (onEnd) onEnd();
+    };
     await ttsAudio.play();
   } catch (err) {
     console.warn("TTS error:", err);
+    hideAudioPending();
     if (onEnd) onEnd();
   }
 }
 
 async function speakSentenceWithHighlight(sentence, tokenEls, onEnd) {
+  showAudioPending();
   try {
-    const res = await fetch("/api/tts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: sentence }),
-    });
-    if (!res.ok) throw new Error("TTS request failed");
-    const blob = await res.blob();
+    const blob = await fetchTtsBlobCached(sentence);
     if (ttsObjectUrl) URL.revokeObjectURL(ttsObjectUrl);
     ttsObjectUrl = URL.createObjectURL(blob);
     ttsAudio.src = ttsObjectUrl;
+    hideAudioPending();
 
     ttsAudio.onloadedmetadata = () => {
       const durationMs = ttsAudio.duration * 1000;
@@ -146,6 +163,7 @@ async function speakSentenceWithHighlight(sentence, tokenEls, onEnd) {
     await ttsAudio.play();
   } catch (err) {
     console.warn("TTS error:", err);
+    hideAudioPending();
     // Fallback timing without audio
     const words = sentence.split(/\s+/);
     const msPerWord = 600;
@@ -257,20 +275,25 @@ function runPhase0() {
   btnNext.classList.add("hidden");
 
   const tokens = buildTokens(lesson.demo_sentence, lesson.sight_word, false);
+  const instructionText = "Listen carefully! The underlined word is our new sight word.";
   setInstruction("Listen carefully! The <u>underlined word</u> is our new sight word.");
 
-  setTimeout(() => {
-    speakSentenceWithHighlight(lesson.demo_sentence, tokens, () => {
-      btnReplay.classList.remove("hidden");
-      btnNext.classList.remove("hidden");
-      btnNext.textContent = "I'm ready to read";
-      btnNext.onclick = runPhase1;
+  speak(instructionText, {
+    onEnd: () => {
+      setTimeout(() => {
+        speakSentenceWithHighlight(lesson.demo_sentence, tokens, () => {
+          btnReplay.classList.remove("hidden");
+          btnNext.classList.remove("hidden");
+          btnNext.textContent = "I'm ready to read";
+          btnNext.onclick = runPhase1;
 
-      btnReplay.onclick = () => {
-        speakSentenceWithHighlight(lesson.demo_sentence, getTokenEls(), () => {});
-      };
-    });
-  }, 600);
+          btnReplay.onclick = () => {
+            speakSentenceWithHighlight(lesson.demo_sentence, getTokenEls(), () => {});
+          };
+        });
+      }, 400);
+    }
+  });
 }
 
 /** Phase 1: student reads practice sentence; then app prompts to click sight word */
@@ -281,11 +304,16 @@ function runPhase1() {
   btnNext.classList.add("hidden");
 
   buildTokens(lesson.practice_sentence, lesson.sight_word, false);
-  setInstruction("Now you read this sentence out loud!");
+  const instructionText = "Now you read this sentence out loud!";
+  setInstruction(instructionText);
 
-  btnNext.textContent = "I read it!";
-  btnNext.classList.remove("hidden");
-  btnNext.onclick = startTestQueue;
+  speak(instructionText, {
+    onEnd: () => {
+      btnNext.textContent = "I read it!";
+      btnNext.classList.remove("hidden");
+      btnNext.onclick = startTestQueue;
+    }
+  });
 }
 
 /** Begin clicking tests */
