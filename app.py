@@ -255,6 +255,7 @@ def tts():
         voice="nova",
         input=text,
         response_format="mp3",
+        speed=0.8,
     )
     audio_bytes = response.content
     return Response(audio_bytes, mimetype="audio/mpeg")
