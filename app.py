@@ -2,6 +2,7 @@ import os
 import random
 import json
 import re
+from datetime import datetime, timezone
 
 from flask import Flask, render_template, request, jsonify, Response
 from openai import OpenAI
@@ -32,27 +33,44 @@ def _resolve_student_id(data: dict) -> int:
 
 
 def _next_sight_word(student_id: int = 1, exclude_word: str = ""):
-    """Return the next sight word to teach based on current progress."""
+    """Return the next sight word to teach based on current progress and spaced repetition."""
     exclude = exclude_word.lower() if exclude_word else ""
     all_progress = {r["word"]: r for r in db.get_progress(student_id=student_id)}
+
+    # 1. Prioritize learned words that are due for review (next_review <= now)
+    for word in ORDERED_SIGHT_WORDS:
+        if word.lower() == exclude:
+            continue
+        prog = all_progress.get(word.lower())
+        if prog and prog["status"] == "learned" and prog.get("next_review"):
+            # next_review is stored as SQLite datetime string; compare directly
+            if prog["next_review"] <= _now_str():
+                return word
+
+    # 2. Next unseen / learning / needs_work word
     for word in ORDERED_SIGHT_WORDS:
         if word.lower() == exclude:
             continue
         prog = all_progress.get(word.lower())
         if prog is None or prog["status"] in ("unseen", "learning", "needs_work"):
             return word
-    # All learned – cycle back to needs_work words first, else start over
+
+    # 3. All learned — fall back to needs_work, then first non-excluded
     for word in ORDERED_SIGHT_WORDS:
         if word.lower() == exclude:
             continue
         prog = all_progress.get(word.lower())
         if prog and prog["status"] == "needs_work":
             return word
-    # Fall back to first word that isn't the excluded one
     for word in ORDERED_SIGHT_WORDS:
         if word.lower() != exclude:
             return word
     return ORDERED_SIGHT_WORDS[0]
+
+
+def _now_str() -> str:
+    """Return current UTC datetime as SQLite-compatible string."""
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
 def _learned_words(exclude=None, student_id: int = 1):
@@ -165,10 +183,20 @@ def list_students():
 def create_student():
     data = request.get_json() or {}
     name = data.get("name", "").strip()
+    pin = data.get("pin", "").strip() or None
     if not name:
         return jsonify({"error": "name is required"}), 400
-    student = db.create_student(name)
+    student = db.create_student(name, pin=pin)
     return jsonify(student), 201
+
+
+@app.route("/api/students/<int:student_id>/verify-pin", methods=["POST"])
+def verify_pin(student_id):
+    data = request.get_json() or {}
+    pin = data.get("pin", "")
+    if db.verify_student_pin(student_id, pin):
+        return jsonify({"ok": True})
+    return jsonify({"ok": False, "error": "Incorrect PIN"}), 403
 
 
 @app.route("/api/generate-lesson", methods=["POST"])

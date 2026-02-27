@@ -1,0 +1,14 @@
+services:
+  web:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - db_data:/app
+    environment:
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - FLASK_DEBUG=${FLASK_DEBUG:-0}
+    restart: unless-stopped
+
+volumes:
+  db_data:
