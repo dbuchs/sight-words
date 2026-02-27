@@ -32,39 +32,72 @@ def _resolve_student_id(data: dict) -> int:
         return 1
 
 
-def _next_sight_word(student_id: int = 1, exclude_word: str = ""):
-    """Return the next sight word to teach based on current progress and spaced repetition."""
-    exclude = exclude_word.lower() if exclude_word else ""
+def _next_sight_word(student_id: int = 1, exclude_word: str = "", seen_words: list = None):
+    """Return the next sight word to teach based on current progress, spaced repetition,
+    and adaptive difficulty.  seen_words lists all words already shown this session so that
+    the same word is not repeated too soon."""
+    # Build exclusion sets at two strictness levels so we can fall back gracefully
+    # when most words have already been shown this session.
+    session_seen = set(w.lower() for w in (seen_words or []))
+    if exclude_word:
+        session_seen.add(exclude_word.lower())
+    just_exclude = {exclude_word.lower()} if exclude_word else set()
+
     all_progress = {r["word"]: r for r in db.get_progress(student_id=student_id)}
 
-    # 1. Prioritize learned words that are due for review (next_review <= now)
-    for word in ORDERED_SIGHT_WORDS:
-        if word.lower() == exclude:
-            continue
-        prog = all_progress.get(word.lower())
-        if prog and prog["status"] == "learned" and prog.get("next_review"):
-            # next_review is stored as SQLite datetime string; compare directly
-            if prog["next_review"] <= _now_str():
+    # Compute overall accuracy for adaptive difficulty
+    # (require a minimum of attempts/words to have reliable data)
+    _MIN_ATTEMPTS = 3   # minimum attempts per word to count it
+    _MIN_WORDS = 5      # minimum number of such words before adapting
+    _STRUGGLING_THRESHOLD = 0.5  # accuracy below this → struggling
+
+    attempted = [r for r in all_progress.values() if r.get("attempts", 0) >= _MIN_ATTEMPTS]
+    accuracy = None
+    if len(attempted) >= _MIN_WORDS:
+        total_c = sum(r["correct"] for r in attempted)
+        total_a = sum(r["attempts"] for r in attempted)
+        accuracy = total_c / total_a if total_a > 0 else 0
+
+    # Try with full session exclusion first, then fall back to only exclude_word,
+    # then no exclusion at all, to prevent infinite loops on small word lists.
+    for excl in (session_seen, just_exclude, set()):
+        def skip(word, _excl=excl):
+            return word.lower() in _excl
+
+        # 1. Spaced-repetition reviews: learned words due now
+        for word in ORDERED_SIGHT_WORDS:
+            if skip(word):
+                continue
+            prog = all_progress.get(word.lower())
+            if prog and prog["status"] == "learned" and prog.get("next_review"):
+                if prog["next_review"] <= _now_str():
+                    return word
+
+        # 2. Adaptive: if student is struggling, prioritise needs_work across all levels
+        if accuracy is not None and accuracy < _STRUGGLING_THRESHOLD:
+            for word in ORDERED_SIGHT_WORDS:
+                if skip(word):
+                    continue
+                prog = all_progress.get(word.lower())
+                if prog and prog["status"] == "needs_work":
+                    return word
+
+        # 3. Next unseen / learning / needs_work word in curriculum order
+        for word in ORDERED_SIGHT_WORDS:
+            if skip(word):
+                continue
+            prog = all_progress.get(word.lower())
+            if prog is None or prog["status"] in ("unseen", "learning", "needs_work"):
                 return word
 
-    # 2. Next unseen / learning / needs_work word
-    for word in ORDERED_SIGHT_WORDS:
-        if word.lower() == exclude:
-            continue
-        prog = all_progress.get(word.lower())
-        if prog is None or prog["status"] in ("unseen", "learning", "needs_work"):
-            return word
+        # 4. All learned — fall back to any needs_work word
+        for word in ORDERED_SIGHT_WORDS:
+            if skip(word):
+                continue
+            prog = all_progress.get(word.lower())
+            if prog and prog["status"] == "needs_work":
+                return word
 
-    # 3. All learned — fall back to needs_work, then first non-excluded
-    for word in ORDERED_SIGHT_WORDS:
-        if word.lower() == exclude:
-            continue
-        prog = all_progress.get(word.lower())
-        if prog and prog["status"] == "needs_work":
-            return word
-    for word in ORDERED_SIGHT_WORDS:
-        if word.lower() != exclude:
-            return word
     return ORDERED_SIGHT_WORDS[0]
 
 
@@ -183,7 +216,7 @@ def list_students():
 def create_student():
     data = request.get_json() or {}
     name = data.get("name", "").strip()
-    pin = data.get("pin", "").strip() or None
+    pin = (data.get("pin") or "").strip() or None
     if not name:
         return jsonify({"error": "name is required"}), 400
     student = db.create_student(name, pin=pin)
@@ -199,14 +232,24 @@ def verify_pin(student_id):
     return jsonify({"ok": False, "error": "Incorrect PIN"}), 403
 
 
+@app.route("/api/students/<int:student_id>/pin", methods=["PUT"])
+def update_pin(student_id):
+    """Update or remove a student's PIN. Send {"pin": "1234"} to set, {"pin": null} to remove."""
+    data = request.get_json() or {}
+    pin = (data.get("pin") or "").strip() or None
+    db.update_student_pin(student_id, pin)
+    return jsonify({"ok": True})
+
+
 @app.route("/api/generate-lesson", methods=["POST"])
 def generate_lesson():
     """Generate a two-sentence lesson for the next (or requested) sight word."""
     data = request.get_json() or {}
     student_id = _resolve_student_id(data)
     previous_word = data.get("previous_word", "")
+    seen_words = data.get("seen_words") or []
     sight_word = data.get("word") or _next_sight_word(
-        student_id=student_id, exclude_word=previous_word
+        student_id=student_id, exclude_word=previous_word, seen_words=seen_words
     )
     sight_word_lower = sight_word.lower()
 
@@ -272,18 +315,28 @@ def get_word_progress(word):
 
 @app.route("/api/tts", methods=["POST"])
 def tts():
-    """Proxy TTS request to OpenAI and return audio bytes."""
+    """Proxy TTS request to OpenAI and return audio bytes.
+    Optional mode='word' uses pronunciation-focused instructions for isolated words."""
     data = request.get_json() or {}
     text = data.get("text", "").strip()
+    mode = data.get("mode", "sentence")
     if not text:
         return jsonify({"error": "text is required"}), 400
+
+    if mode == "word":
+        instructions = (
+            "Say this single word slowly and very clearly, as if teaching a child to read it. "
+            "Give the word its full, natural pronunciation — not embedded in a sentence."
+        )
+    else:
+        instructions = "Speak very slowly and distinctly, enunciating each word, for dictation."
 
     response = client.audio.speech.create(
         model="tts-1-hd",
         voice="nova",
         input=text,
         response_format="mp3",
-        instructions="Speak very slowly and distinctly, enunciating each word, for dictation."
+        instructions=instructions,
     )
     audio_bytes = response.content
     return Response(audio_bytes, mimetype="audio/mpeg")

@@ -31,7 +31,20 @@
       </select>
       {% if current_student %}
       <span class="subtitle" style="margin:0"> — {{ current_student.name }}</span>
+      <button id="btn-manage-pin" class="btn-secondary btn-sm" title="Change or remove PIN">🔑 PIN</button>
       {% endif %}
+    </div>
+
+    <!-- PIN management form (hidden by default) -->
+    <div id="pin-manage-form" class="pin-manage-form hidden">
+      <span class="student-label">
+        {% if current_student and current_student.has_pin %}PIN is currently <strong>set</strong>.{% else %}No PIN is set.{% endif %}
+      </span>
+      <input id="pin-new-value" type="password" placeholder="New PIN (leave blank to remove)" class="student-input pin-input" maxlength="8" inputmode="numeric" aria-label="New PIN" />
+      <button id="btn-pin-save" class="btn-primary btn-sm">Save PIN</button>
+      <button id="btn-pin-remove" class="btn-secondary btn-sm">Remove PIN</button>
+      <button id="btn-pin-cancel" class="btn-secondary btn-sm">Cancel</button>
+      <span id="pin-manage-msg" class="pin-manage-msg hidden"></span>
     </div>
 
     <p class="subtitle">Track each student's sight-word mastery.</p>
@@ -74,5 +87,57 @@
     </section>
     {% endfor %}
   </main>
+
+  <script>
+    const studentId = {{ student_id | tojson }};
+    const btnManagePin = document.getElementById("btn-manage-pin");
+    const pinManageForm = document.getElementById("pin-manage-form");
+    const pinNewValue = document.getElementById("pin-new-value");
+    const btnPinSave = document.getElementById("btn-pin-save");
+    const btnPinRemove = document.getElementById("btn-pin-remove");
+    const btnPinCancel = document.getElementById("btn-pin-cancel");
+    const pinManageMsg = document.getElementById("pin-manage-msg");
+
+    if (btnManagePin) {
+      btnManagePin.addEventListener("click", () => {
+        pinManageForm.classList.toggle("hidden");
+        pinManageMsg.classList.add("hidden");
+        if (pinNewValue) pinNewValue.value = "";
+      });
+    }
+    if (btnPinCancel) {
+      btnPinCancel.addEventListener("click", () => {
+        pinManageForm.classList.add("hidden");
+      });
+    }
+
+    async function savePinValue(pin) {
+      const res = await fetch(`/api/students/${studentId}/pin`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pin: pin || null }),
+      });
+      const data = await res.json();
+      if (res.ok) {
+        pinManageMsg.textContent = pin ? "PIN updated." : "PIN removed.";
+        pinManageMsg.style.color = "var(--success)";
+        pinManageMsg.classList.remove("hidden");
+        setTimeout(() => window.location.reload(), 1000);
+      } else {
+        pinManageMsg.textContent = data.error || "Error updating PIN.";
+        pinManageMsg.style.color = "var(--danger)";
+        pinManageMsg.classList.remove("hidden");
+      }
+    }
+
+    if (btnPinSave) {
+      btnPinSave.addEventListener("click", () => {
+        savePinValue((pinNewValue ? pinNewValue.value.trim() : "") || null);
+      });
+    }
+    if (btnPinRemove) {
+      btnPinRemove.addEventListener("click", () => savePinValue(null));
+    }
+  </script>
 </body>
 </html>

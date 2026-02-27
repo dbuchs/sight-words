@@ -116,6 +116,14 @@ def verify_student_pin(student_id: int, pin: str) -> bool:
     return stored_pin == pin
 
 
+def update_student_pin(student_id: int, pin: str = None):
+    """Set or remove a student's PIN. Pass None to remove."""
+    conn = get_db()
+    conn.execute("UPDATE students SET pin = ? WHERE id = ?", (pin or None, student_id))
+    conn.commit()
+    conn.close()
+
+
 def _mask_student(row: dict) -> dict:
     """Replace raw PIN with a has_pin boolean to avoid exposing PINs via API."""
     d = dict(row)

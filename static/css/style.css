@@ -511,6 +511,24 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
   margin-bottom: 1rem;
 }
 
+/* ── PIN management (teacher page) ── */
+.pin-manage-form {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+  background: #f0f6ff;
+  border: 1.5px solid #d0daf0;
+  border-radius: 12px;
+  padding: .6rem 1rem;
+  margin-bottom: 1rem;
+}
+.pin-manage-msg {
+  font-size: .9rem;
+  font-weight: 600;
+  margin-left: .25rem;
+}
+
 @media (max-width: 600px) {
   .sentence { font-size: 1.4rem; }
   .card { padding: 1.5rem 1rem; }

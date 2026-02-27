@@ -18,6 +18,7 @@ let currentTest = null;
 let roundResults = [];      // { word, correct }
 let currentStudentId = null;  // active student id (integer)
 let lastSightWord = "";     // last lesson's sight word -- avoid repeating
+let sessionWords = new Set(); // sight words shown this session -- avoid same-session duplicates
 
 // DOM refs
 const startScreen    = document.getElementById("start-screen");
@@ -184,23 +185,24 @@ function resetAudioPending() {
   audioPendingEl.classList.remove("is-playing", "is-done");
 }
 
-async function fetchTtsBlobCached(text) {
-  if (ttsCache.has(text)) return ttsCache.get(text);
+async function fetchTtsBlobCached(text, mode = "sentence") {
+  const cacheKey = mode === "word" ? `word:${text}` : text;
+  if (ttsCache.has(cacheKey)) return ttsCache.get(cacheKey);
   const res = await fetch("/api/tts", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text }),
+    body: JSON.stringify({ text, mode }),
   });
   if (!res.ok) throw new Error("TTS request failed");
   const blob = await res.blob();
-  ttsCache.set(text, blob);
+  ttsCache.set(cacheKey, blob);
   return blob;
 }
 
-async function speak(text, { onEnd = null } = {}) {
+async function speak(text, { onEnd = null, mode = "sentence" } = {}) {
   showAudioPending();
   try {
-    const blob = await fetchTtsBlobCached(text);
+    const blob = await fetchTtsBlobCached(text, mode);
     if (ttsObjectUrl) URL.revokeObjectURL(ttsObjectUrl);
     ttsObjectUrl = URL.createObjectURL(blob);
     ttsAudio.src = ttsObjectUrl;
@@ -215,6 +217,50 @@ async function speak(text, { onEnd = null } = {}) {
     resetAudioPending();
     if (onEnd) onEnd();
   }
+}
+
+/** Speak the word-test prompt: "Click the word" (cached) then the word in isolation. */
+async function speakWordTest(word) {
+  function waitForAudioEnd() {
+    return new Promise(resolve => { ttsAudio.onended = resolve; });
+  }
+  try {
+    // Pre-fetch both blobs in parallel for minimum latency
+    const [promptBlob, wordBlob] = await Promise.all([
+      fetchTtsBlobCached("Click the word"),
+      fetchTtsBlobCached(word, "word"),
+    ]);
+    showAudioPending();
+    // Play prompt
+    if (ttsObjectUrl) URL.revokeObjectURL(ttsObjectUrl);
+    ttsObjectUrl = URL.createObjectURL(promptBlob);
+    ttsAudio.src = ttsObjectUrl;
+    showAudioPlaying();
+    await ttsAudio.play();
+    await waitForAudioEnd();
+    // Play isolated word
+    if (ttsObjectUrl) URL.revokeObjectURL(ttsObjectUrl);
+    ttsObjectUrl = URL.createObjectURL(wordBlob);
+    ttsAudio.src = ttsObjectUrl;
+    await ttsAudio.play();
+    await waitForAudioEnd();
+    hideAudioPending();
+  } catch (err) {
+    console.warn("TTS word-test error:", err);
+    resetAudioPending();
+  }
+}
+
+/** Pre-warm TTS cache for phrases that will definitely be needed. */
+function prewarmTtsCache() {
+  const phrases = [
+    "Click the word",
+    "Great job!",
+    "Amazing! You got them all right!",
+    "Good work! Keep practising!",
+    "Now you read this sentence out loud!",
+  ];
+  phrases.forEach(p => fetchTtsBlobCached(p).catch(() => {}));
 }
 
 async function speakSentenceWithHighlight(sentence, tokenEls, onEnd) {
@@ -328,6 +374,7 @@ async function loadLesson(wordOverride) {
   const body = {
     student_id: currentStudentId,
     previous_word: lastSightWord,
+    seen_words: Array.from(sessionWords),
   };
   if (wordOverride) body.word = wordOverride;
 
@@ -339,6 +386,7 @@ async function loadLesson(wordOverride) {
   lesson = await res.json();
   roundResults = [];
   lastSightWord = lesson.sight_word;
+  sessionWords.add(lesson.sight_word);
 
   sightWordDisplay.textContent = lesson.sight_word;
   phaseLabel.textContent = "Listen";
@@ -417,7 +465,7 @@ function nextTest() {
 
   // Instruction text does NOT reveal the word — it's audio only
   setInstruction("🔊 Listen for the word to find…");
-  speak(`Click on the word: ${currentTest.word}`);
+  speakWordTest(currentTest.word);
 }
 
 function onWordClick(e) {
@@ -478,6 +526,9 @@ function showScreen(target) {
 btnStart.addEventListener("click", () => {
   const selected = studentSelect && studentSelect.options[studentSelect.selectedIndex];
   const hasPin = selected && selected.dataset.hasPin === "true";
+  // Reset session tracking for a fresh start
+  sessionWords = new Set();
+  lastSightWord = "";
   if (hasPin) {
     // Show PIN entry screen
     pinBuffer = "";
@@ -490,3 +541,6 @@ btnStart.addEventListener("click", () => {
   }
 });
 btnAgain.addEventListener("click", () => loadLesson(null));
+
+// Pre-warm TTS cache for common fixed phrases on page load
+prewarmTtsCache();
