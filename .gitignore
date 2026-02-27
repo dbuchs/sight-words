@@ -9,3 +9,4 @@ __pycache__/
 
 # Flask session
 flask_session/
+venv/
