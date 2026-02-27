@@ -275,24 +275,17 @@ function runPhase0() {
   btnNext.classList.add("hidden");
 
   const tokens = buildTokens(lesson.demo_sentence, lesson.sight_word, false);
-  const instructionText = "Listen carefully! The underlined word is our new sight word.";
   setInstruction("Listen carefully! The <u>underlined word</u> is our new sight word.");
 
-  speak(instructionText, {
-    onEnd: () => {
-      setTimeout(() => {
-        speakSentenceWithHighlight(lesson.demo_sentence, tokens, () => {
-          btnReplay.classList.remove("hidden");
-          btnNext.classList.remove("hidden");
-          btnNext.textContent = "I'm ready to read";
-          btnNext.onclick = runPhase1;
+  speakSentenceWithHighlight(lesson.demo_sentence, tokens, () => {
+    btnReplay.classList.remove("hidden");
+    btnNext.classList.remove("hidden");
+    btnNext.textContent = "I'm ready to read";
+    btnNext.onclick = runPhase1;
 
-          btnReplay.onclick = () => {
-            speakSentenceWithHighlight(lesson.demo_sentence, getTokenEls(), () => {});
-          };
-        });
-      }, 400);
-    }
+    btnReplay.onclick = () => {
+      speakSentenceWithHighlight(lesson.demo_sentence, getTokenEls(), () => {});
+    };
   });
 }
 
