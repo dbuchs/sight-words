@@ -21,6 +21,7 @@ let lastSightWord = "";     // last lesson's sight word -- avoid repeating
 
 // DOM refs
 const startScreen    = document.getElementById("start-screen");
+const pinScreen      = document.getElementById("pin-screen");
 const lessonScreen   = document.getElementById("lesson-screen");
 const completeScreen = document.getElementById("complete-screen");
 const sightWordDisplay = document.getElementById("sight-word-display");
@@ -40,8 +41,69 @@ const studentSelect    = document.getElementById("student-select");
 const btnAddStudent    = document.getElementById("btn-add-student");
 const newStudentForm   = document.getElementById("new-student-form");
 const newStudentName   = document.getElementById("new-student-name");
+const newStudentPin    = document.getElementById("new-student-pin");
 const btnSaveStudent   = document.getElementById("btn-save-student");
 const btnCancelStudent = document.getElementById("btn-cancel-student");
+
+// PIN screen refs
+const pinStudentName = document.getElementById("pin-student-name");
+const pinDots        = document.querySelectorAll(".pin-dot");
+const pinError       = document.getElementById("pin-error");
+const pinOkBtn       = document.getElementById("pin-ok");
+const pinClearBtn    = document.getElementById("pin-clear");
+const btnPinBack     = document.getElementById("btn-pin-back");
+let pinBuffer = "";
+
+function updatePinDots() {
+  pinDots.forEach((dot, i) => {
+    dot.classList.toggle("filled", i < pinBuffer.length);
+  });
+}
+
+document.querySelectorAll(".pin-key[data-digit]").forEach(btn => {
+  btn.addEventListener("click", () => {
+    if (pinBuffer.length < 8) {
+      pinBuffer += btn.dataset.digit;
+      updatePinDots();
+    }
+  });
+});
+
+if (pinClearBtn) {
+  pinClearBtn.addEventListener("click", () => {
+    pinBuffer = pinBuffer.slice(0, -1);
+    updatePinDots();
+  });
+}
+
+if (btnPinBack) {
+  btnPinBack.addEventListener("click", () => {
+    pinBuffer = "";
+    updatePinDots();
+    showScreen(startScreen);
+  });
+}
+
+if (pinOkBtn) {
+  pinOkBtn.addEventListener("click", async () => {
+    const sid = getStudentId();
+    const res = await fetch(`/api/students/${sid}/verify-pin`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ pin: pinBuffer }),
+    });
+    if (res.ok) {
+      pinError.classList.add("hidden");
+      pinBuffer = "";
+      updatePinDots();
+      loadLesson(null);
+    } else {
+      pinError.classList.remove("hidden");
+      pinBuffer = "";
+      updatePinDots();
+    }
+  });
+}
 
 // Student helpers
 function getStudentId() {
@@ -60,6 +122,7 @@ if (btnCancelStudent) {
   btnCancelStudent.addEventListener("click", () => {
     newStudentForm.classList.add("hidden");
     newStudentName.value = "";
+    if (newStudentPin) newStudentPin.value = "";
   });
 }
 
@@ -67,20 +130,23 @@ if (btnSaveStudent) {
   btnSaveStudent.addEventListener("click", async () => {
     const name = newStudentName.value.trim();
     if (!name) return;
+    const pin = newStudentPin ? newStudentPin.value.trim() : "";
     const res = await fetch("/api/students", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, pin: pin || null }),
     });
     if (res.ok) {
       const student = await res.json();
       const opt = document.createElement("option");
       opt.value = student.id;
       opt.textContent = student.name;
+      opt.dataset.hasPin = student.has_pin ? "true" : "false";
       studentSelect.appendChild(opt);
       studentSelect.value = student.id;
       newStudentForm.classList.add("hidden");
       newStudentName.value = "";
+      if (newStudentPin) newStudentPin.value = "";
     } else {
       const err = await res.json();
       alert(err.error || "Could not save student.");
@@ -201,7 +267,7 @@ async function speakSentenceWithHighlight(sentence, tokenEls, onEnd) {
 }
 
 // Build sentence tokens
-function buildTokens(sentence, sightWord, clickable = false) {
+function buildTokens(sentence, sightWord, clickable = false, highlightSightWord = true) {
   sentenceEl.innerHTML = "";
   const rawWords = sentence.split(/\s+/);
   const tokens = [];
@@ -211,7 +277,7 @@ function buildTokens(sentence, sightWord, clickable = false) {
     span.dataset.word = raw.replace(/[^a-zA-Z'-]/g, "").toLowerCase();
     span.textContent = (i < rawWords.length - 1) ? raw + " " : raw;
 
-    if (span.dataset.word === sightWord.toLowerCase()) {
+    if (highlightSightWord && span.dataset.word === sightWord.toLowerCase()) {
       span.classList.add("sight-word");
     }
     if (clickable) {
@@ -315,7 +381,8 @@ function runPhase1() {
   btnReplay.classList.add("hidden");
   btnNext.classList.add("hidden");
 
-  buildTokens(lesson.practice_sentence, lesson.sight_word, false);
+  // Practice sentence: sight word NOT highlighted (student must find it themselves)
+  buildTokens(lesson.practice_sentence, lesson.sight_word, false, false);
   const instructionText = "Now you read this sentence out loud!";
   setInstruction(instructionText);
 
@@ -345,10 +412,11 @@ function nextTest() {
   setPhase(dotIdx);
   phaseLabel.textContent = "Find it";
 
-  buildTokens(lesson.practice_sentence, lesson.sight_word, true);
+  // Practice sentence: sight word NOT highlighted during click tests either
+  buildTokens(lesson.practice_sentence, lesson.sight_word, true, false);
 
-  const cue = `Click on the word: <strong>"${currentTest.word}"</strong>`;
-  setInstruction(cue);
+  // Instruction text does NOT reveal the word — it's audio only
+  setInstruction("🔊 Listen for the word to find…");
   speak(`Click on the word: ${currentTest.word}`);
 }
 
@@ -401,11 +469,24 @@ function runComplete() {
 
 // Screen helper
 function showScreen(target) {
-  [startScreen, lessonScreen, completeScreen].forEach(s => {
+  [startScreen, pinScreen, lessonScreen, completeScreen].forEach(s => {
     s.classList.toggle("hidden", s !== target);
   });
 }
 
 // Event listeners
-btnStart.addEventListener("click", () => loadLesson(null));
+btnStart.addEventListener("click", () => {
+  const selected = studentSelect && studentSelect.options[studentSelect.selectedIndex];
+  const hasPin = selected && selected.dataset.hasPin === "true";
+  if (hasPin) {
+    // Show PIN entry screen
+    pinBuffer = "";
+    updatePinDots();
+    pinError.classList.add("hidden");
+    pinStudentName.textContent = selected.textContent + " — Enter PIN";
+    showScreen(pinScreen);
+  } else {
+    loadLesson(null);
+  }
+});
 btnAgain.addEventListener("click", () => loadLesson(null));

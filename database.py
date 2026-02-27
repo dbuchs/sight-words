@@ -14,13 +14,19 @@ def get_db():
 def init_db():
     conn = get_db()
 
-    # Create students table
+    # Create students table (with optional PIN)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS students (
             id   INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE NOT NULL
+            name TEXT UNIQUE NOT NULL,
+            pin  TEXT
         )
     """)
+
+    # Migrate: add pin column if it doesn't exist yet
+    student_cols = [r[1] for r in conn.execute("PRAGMA table_info(students)").fetchall()]
+    if "pin" not in student_cols:
+        conn.execute("ALTER TABLE students ADD COLUMN pin TEXT")
 
     # Ensure a default student exists so student_id=1 always resolves
     conn.execute("INSERT OR IGNORE INTO students (id, name) VALUES (1, 'Default')")
@@ -45,6 +51,7 @@ def init_db():
                 attempts    INTEGER NOT NULL DEFAULT 0,
                 last_seen   TEXT,
                 status      TEXT NOT NULL DEFAULT 'unseen',
+                next_review TEXT,
                 PRIMARY KEY (student_id, word),
                 FOREIGN KEY (student_id) REFERENCES students(id)
             )
@@ -61,7 +68,7 @@ def init_db():
             """)
             conn.execute("DROP TABLE word_progress_legacy")
     else:
-        # Table already has the new schema
+        # Table already has the new schema — ensure next_review column exists (migration)
         conn.execute("""
             CREATE TABLE IF NOT EXISTS word_progress (
                 student_id  INTEGER NOT NULL DEFAULT 1,
@@ -71,10 +78,13 @@ def init_db():
                 attempts    INTEGER NOT NULL DEFAULT 0,
                 last_seen   TEXT,
                 status      TEXT NOT NULL DEFAULT 'unseen',
+                next_review TEXT,
                 PRIMARY KEY (student_id, word),
                 FOREIGN KEY (student_id) REFERENCES students(id)
             )
         """)
+        if "next_review" not in existing_cols:
+            conn.execute("ALTER TABLE word_progress ADD COLUMN next_review TEXT")
 
     conn.commit()
     conn.close()
@@ -84,27 +94,47 @@ def init_db():
 # Student helpers
 # ---------------------------------------------------------------------------
 
-def create_student(name: str) -> dict:
+def create_student(name: str, pin: str = None) -> dict:
     conn = get_db()
-    conn.execute("INSERT OR IGNORE INTO students (name) VALUES (?)", (name.strip(),))
+    conn.execute("INSERT OR IGNORE INTO students (name, pin) VALUES (?, ?)", (name.strip(), pin or None))
     conn.commit()
     row = conn.execute("SELECT * FROM students WHERE name = ?", (name.strip(),)).fetchone()
     conn.close()
-    return dict(row)
+    return _mask_student(dict(row))
+
+
+def verify_student_pin(student_id: int, pin: str) -> bool:
+    """Return True if the student has no PIN or the PIN matches."""
+    conn = get_db()
+    row = conn.execute("SELECT pin FROM students WHERE id = ?", (student_id,)).fetchone()
+    conn.close()
+    if row is None:
+        return False
+    stored_pin = row["pin"]
+    if not stored_pin:
+        return True  # no PIN set — always allowed
+    return stored_pin == pin
+
+
+def _mask_student(row: dict) -> dict:
+    """Replace raw PIN with a has_pin boolean to avoid exposing PINs via API."""
+    d = dict(row)
+    d["has_pin"] = bool(d.pop("pin", None))
+    return d
 
 
 def get_students() -> list:
     conn = get_db()
     rows = conn.execute("SELECT * FROM students ORDER BY name").fetchall()
     conn.close()
-    return [dict(r) for r in rows]
+    return [_mask_student(dict(r)) for r in rows]
 
 
 def get_student(student_id: int):
     conn = get_db()
     row = conn.execute("SELECT * FROM students WHERE id = ?", (student_id,)).fetchone()
     conn.close()
-    return dict(row) if row else None
+    return _mask_student(dict(row)) if row else None
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +158,15 @@ def get_progress(word=None, student_id: int = 1):
     return [dict(r) for r in rows]
 
 
+def _spaced_repetition_interval(correct_streak: int) -> int:
+    """Return review interval in days based on number of correct answers (simplified SM-2)."""
+    intervals = [1, 3, 7, 14, 30]
+    if correct_streak <= 0:
+        return intervals[0]
+    idx = min(correct_streak - 1, len(intervals) - 1)
+    return intervals[idx]
+
+
 def record_attempt(word, correct: bool, student_id: int = 1):
     conn = get_db()
     word = word.lower()
@@ -146,18 +185,24 @@ def record_attempt(word, correct: bool, student_id: int = 1):
             status = "needs_work"
         else:
             status = "learning"
+        interval = _spaced_repetition_interval(new_correct)
+        # Build the interval modifier string safely from a controlled integer value
+        interval_mod = f"+{interval} days"
         conn.execute(
             """UPDATE word_progress
-               SET correct = ?, attempts = ?, last_seen = datetime('now'), status = ?
+               SET correct = ?, attempts = ?, last_seen = datetime('now'), status = ?,
+                   next_review = datetime('now', ?)
                WHERE student_id = ? AND word = ?""",
-            (new_correct, new_attempts, status, student_id, word),
+            (new_correct, new_attempts, status, interval_mod, student_id, word),
         )
     else:
         status = "learning"
+        interval = _spaced_repetition_interval(1 if correct else 0)
+        interval_mod = f"+{interval} days"
         conn.execute(
-            """INSERT INTO word_progress (student_id, word, correct, attempts, last_seen, status)
-               VALUES (?, ?, ?, 1, datetime('now'), ?)""",
-            (student_id, word, 1 if correct else 0, status),
+            """INSERT INTO word_progress (student_id, word, correct, attempts, last_seen, status, next_review)
+               VALUES (?, ?, ?, 1, datetime('now'), ?, datetime('now', ?))""",
+            (student_id, word, 1 if correct else 0, status, interval_mod),
         )
 
     conn.commit()

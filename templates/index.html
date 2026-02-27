@@ -28,7 +28,7 @@
         <div class="student-row">
           <select id="student-select" class="student-select">
             {% for s in students %}
-            <option value="{{ s.id }}">{{ s.name }}</option>
+            <option value="{{ s.id }}" data-has-pin="{{ 'true' if s.has_pin else 'false' }}">{{ s.name }}</option>
             {% endfor %}
             {% if not students %}
             <option value="" disabled selected>No students yet</option>
@@ -38,12 +38,42 @@
         </div>
         <div id="new-student-form" class="new-student-form hidden">
           <input id="new-student-name" type="text" placeholder="Student name" class="student-input" maxlength="40" />
+          <input id="new-student-pin" type="password" placeholder="PIN (optional)" class="student-input pin-input" maxlength="8" inputmode="numeric" />
           <button id="btn-save-student" class="btn-primary btn-sm">Save</button>
           <button id="btn-cancel-student" class="btn-secondary btn-sm">Cancel</button>
         </div>
       </div>
 
       <button id="btn-start" class="btn-primary big-btn">Start Learning ▶</button>
+    </section>
+
+    <!-- ── PIN SCREEN ── -->
+    <section id="pin-screen" class="card screen hidden">
+      <div class="mascot">🔒</div>
+      <h2 id="pin-student-name">Enter PIN</h2>
+      <p class="pin-hint">Ask a grown-up to enter the PIN.</p>
+      <div class="pin-dots" id="pin-dots">
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+      </div>
+      <div class="pin-keypad">
+        <button class="pin-key" data-digit="1">1</button>
+        <button class="pin-key" data-digit="2">2</button>
+        <button class="pin-key" data-digit="3">3</button>
+        <button class="pin-key" data-digit="4">4</button>
+        <button class="pin-key" data-digit="5">5</button>
+        <button class="pin-key" data-digit="6">6</button>
+        <button class="pin-key" data-digit="7">7</button>
+        <button class="pin-key" data-digit="8">8</button>
+        <button class="pin-key" data-digit="9">9</button>
+        <button class="pin-key pin-key-clear" id="pin-clear">⌫</button>
+        <button class="pin-key" data-digit="0">0</button>
+        <button class="pin-key pin-key-ok" id="pin-ok">OK</button>
+      </div>
+      <p id="pin-error" class="pin-error hidden">Wrong PIN. Try again.</p>
+      <button id="btn-pin-back" class="btn-secondary btn-sm" style="margin-top:.5rem">← Back</button>
     </section>
 
     <!-- ── LESSON SCREEN ── -->
