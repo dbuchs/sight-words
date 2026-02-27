@@ -220,7 +220,7 @@ async function speak(text, { onEnd = null, mode = "sentence" } = {}) {
 }
 
 /** Speak the word-test prompt: "Click the word" (cached) then the word in isolation. */
-async function speakWordTest(word) {
+async function speakWordTest(word, { onEnd = null } = {}) {
   function waitForAudioEnd() {
     return new Promise(resolve => { ttsAudio.onended = resolve; });
   }
@@ -245,9 +245,11 @@ async function speakWordTest(word) {
     await ttsAudio.play();
     await waitForAudioEnd();
     hideAudioPending();
+    if (onEnd) onEnd();
   } catch (err) {
     console.warn("TTS word-test error:", err);
     resetAudioPending();
+    if (onEnd) onEnd();
   }
 }
 
@@ -460,12 +462,26 @@ function nextTest() {
   setPhase(dotIdx);
   phaseLabel.textContent = "Find it";
 
+  btnReplay.classList.add("hidden");
+  btnNext.classList.add("hidden");
+
   // Practice sentence: sight word NOT highlighted during click tests either
   buildTokens(lesson.practice_sentence, lesson.sight_word, true, false);
 
   // Instruction text does NOT reveal the word — it's audio only
   setInstruction("🔊 Listen for the word to find…");
-  speakWordTest(currentTest.word);
+  speakWordTest(currentTest.word, {
+    onEnd: () => {
+      btnReplay.textContent = "🔊 Replay";
+      btnReplay.onclick = () => {
+        btnReplay.classList.add("hidden");
+        speakWordTest(currentTest.word, {
+          onEnd: () => btnReplay.classList.remove("hidden"),
+        });
+      };
+      btnReplay.classList.remove("hidden");
+    }
+  });
 }
 
 function onWordClick(e) {
@@ -494,6 +510,7 @@ function onWordClick(e) {
     speak(`Not quite. The word was ${currentTest.word}.`);
   }
 
+  btnReplay.classList.add("hidden");
   getTokenEls().forEach(el => {
     el.classList.remove("clickable");
     el.removeEventListener("click", onWordClick);
