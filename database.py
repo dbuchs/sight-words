@@ -1,7 +1,7 @@
 import sqlite3
 import os
 
-DB_PATH = os.path.join(os.path.dirname(__file__), "progress.db")
+DB_PATH = os.environ.get("DB_PATH", "/data/progress.db")
 
 
 def get_db():
