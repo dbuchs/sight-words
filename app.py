@@ -146,6 +146,8 @@ def _pick_test_words(sentence: str, sight_word: str, count: int = 2, student_id:
     learned = set(_learned_words(exclude=sight_word, student_id=student_id))
     preferred = [w for w in words if w.lower() in learned]
     others = [w for w in words if w.lower() not in learned]
+    random.shuffle(preferred)
+    random.shuffle(others)
     pool = preferred + others
     # Deduplicate while preserving order
     seen = set()
