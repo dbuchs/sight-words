@@ -185,7 +185,7 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
 }
 
 /* Hoverable words (listen & read phases only — not during tests) */
-.word-token.hoverable { cursor: help; }
+.word-token.hoverable { cursor: pointer; }
 .word-token.hoverable:hover {
   background: #dbeafe;
   outline: 1.5px dashed var(--primary);
