@@ -265,6 +265,27 @@ function prewarmTtsCache() {
   phrases.forEach(p => fetchTtsBlobCached(p).catch(() => {}));
 }
 
+// Separate audio element for word-hover previews (does not interrupt lesson audio)
+const hoverAudio = new Audio();
+let hoverObjectUrl = null;
+let hoverDebounceTimer = null;
+
+/** Play a word's pronunciation on hover (debounced, non-interrupting). */
+async function speakWordHover(word) {
+  clearTimeout(hoverDebounceTimer);
+  hoverDebounceTimer = setTimeout(async () => {
+    try {
+      const blob = await fetchTtsBlobCached(word, "word");
+      if (hoverObjectUrl) URL.revokeObjectURL(hoverObjectUrl);
+      hoverObjectUrl = URL.createObjectURL(blob);
+      hoverAudio.src = hoverObjectUrl;
+      hoverAudio.play().catch(() => {});
+    } catch (err) {
+      // ignore hover TTS errors silently
+    }
+  }, 300);
+}
+
 async function speakSentenceWithHighlight(sentence, tokenEls, onEnd) {
   showAudioPending();
   try {
@@ -315,7 +336,7 @@ async function speakSentenceWithHighlight(sentence, tokenEls, onEnd) {
 }
 
 // Build sentence tokens
-function buildTokens(sentence, sightWord, clickable = false, highlightSightWord = true) {
+function buildTokens(sentence, sightWord, clickable = false, highlightSightWord = true, hoverable = false) {
   sentenceEl.innerHTML = "";
   const rawWords = sentence.split(/\s+/);
   const tokens = [];
@@ -331,6 +352,11 @@ function buildTokens(sentence, sightWord, clickable = false, highlightSightWord 
     if (clickable) {
       span.classList.add("clickable");
       span.addEventListener("click", onWordClick);
+    }
+    if (hoverable) {
+      span.classList.add("hoverable");
+      span.title = "Hover to hear this word";
+      span.addEventListener("mouseenter", () => speakWordHover(span.dataset.word));
     }
     sentenceEl.appendChild(span);
     tokens.push(span);
@@ -409,7 +435,7 @@ function runPhase0() {
   btnReplay.classList.add("hidden");
   btnNext.classList.add("hidden");
 
-  const tokens = buildTokens(lesson.demo_sentence, lesson.sight_word, false);
+  const tokens = buildTokens(lesson.demo_sentence, lesson.sight_word, false, true, true);
   setInstruction("Listen carefully! The <u>underlined word</u> is our new sight word.");
 
   speakSentenceWithHighlight(lesson.demo_sentence, tokens, () => {
@@ -432,7 +458,7 @@ function runPhase1() {
   btnNext.classList.add("hidden");
 
   // Practice sentence: sight word NOT highlighted (student must find it themselves)
-  buildTokens(lesson.practice_sentence, lesson.sight_word, false, false);
+  buildTokens(lesson.practice_sentence, lesson.sight_word, false, false, true);
   const instructionText = "Now you read this sentence out loud!";
   setInstruction(instructionText);
 

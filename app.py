@@ -106,16 +106,6 @@ def _now_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _learned_words(exclude=None, student_id: int = 1):
-    """Return words with status 'learned' (excluding the given word)."""
-    all_progress = db.get_progress(student_id=student_id)
-    learned = [
-        r["word"] for r in all_progress
-        if r["status"] == "learned" and r["word"] != (exclude or "").lower()
-    ]
-    return learned
-
-
 def _generate_sentence(sight_word: str, additional_context: str = "") -> str:
     """Ask GPT to generate a child-friendly sentence using the given sight word."""
     prompt = (
@@ -139,22 +129,34 @@ def _generate_sentence(sight_word: str, additional_context: str = "") -> str:
 
 
 def _pick_test_words(sentence: str, sight_word: str, count: int = 2, student_id: int = 1) -> list:
-    """Pick additional words from the sentence to test (non-sight-word)."""
+    """Pick additional words from the sentence to test (non-sight-word).
+
+    Priority: needs_work / learning words first, then unseen words, then
+    learned words as a last resort (so already-mastered words like 'the'
+    are not repeated once the student has succeeded with them).
+    """
     words = [re.sub(r"[^a-zA-Z'-]", "", w) for w in sentence.split()]
     words = [w for w in words if w and w.lower() != sight_word.lower()]
-    # Prefer previously learned sight words; fall back to any word
-    learned = set(_learned_words(exclude=sight_word, student_id=student_id))
-    preferred = [w for w in words if w.lower() in learned]
-    others = [w for w in words if w.lower() not in learned]
-    random.shuffle(preferred)
-    random.shuffle(others)
-    pool = preferred + others
+    all_prog = {r["word"]: r for r in db.get_progress(student_id=student_id)}
+
+    def _status(w):
+        return all_prog.get(w.lower(), {}).get("status", "unseen")
+
+    needs_practice = [w for w in words if _status(w) in ("needs_work", "learning")]
+    unseen = [w for w in words if _status(w) == "unseen"]
+    learned = [w for w in words if _status(w) == "learned"]
+
+    random.shuffle(needs_practice)
+    random.shuffle(unseen)
+    random.shuffle(learned)
+    pool = needs_practice + unseen + learned  # learned words are last resort
+
     # Deduplicate while preserving order
-    seen = set()
+    seen_set = set()
     unique = []
     for w in pool:
-        if w.lower() not in seen:
-            seen.add(w.lower())
+        if w.lower() not in seen_set:
+            seen_set.add(w.lower())
             unique.append(w)
     return unique[:count]
 
