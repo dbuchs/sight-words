@@ -265,25 +265,21 @@ function prewarmTtsCache() {
   phrases.forEach(p => fetchTtsBlobCached(p).catch(() => {}));
 }
 
-// Separate audio element for word-hover previews (does not interrupt lesson audio)
-const hoverAudio = new Audio();
-let hoverObjectUrl = null;
-let hoverDebounceTimer = null;
+// Separate audio element for word-click previews (does not interrupt lesson audio)
+const clickAudio = new Audio();
+let clickObjectUrl = null;
 
-/** Play a word's pronunciation on hover (debounced, non-interrupting). */
-async function speakWordHover(word) {
-  clearTimeout(hoverDebounceTimer);
-  hoverDebounceTimer = setTimeout(async () => {
-    try {
-      const blob = await fetchTtsBlobCached(word, "word");
-      if (hoverObjectUrl) URL.revokeObjectURL(hoverObjectUrl);
-      hoverObjectUrl = URL.createObjectURL(blob);
-      hoverAudio.src = hoverObjectUrl;
-      hoverAudio.play().catch(() => {});
-    } catch (err) {
-      // ignore hover TTS errors silently
-    }
-  }, 300);
+/** Play a word's pronunciation on click (non-interrupting). */
+async function speakWordClick(word) {
+  try {
+    const blob = await fetchTtsBlobCached(word, "word");
+    if (clickObjectUrl) URL.revokeObjectURL(clickObjectUrl);
+    clickObjectUrl = URL.createObjectURL(blob);
+    clickAudio.src = clickObjectUrl;
+    clickAudio.play().catch(() => {});
+  } catch (err) {
+    // ignore click TTS errors silently
+  }
 }
 
 async function speakSentenceWithHighlight(sentence, tokenEls, onEnd) {
@@ -355,8 +351,8 @@ function buildTokens(sentence, sightWord, clickable = false, highlightSightWord 
     }
     if (hoverable) {
       span.classList.add("hoverable");
-      span.title = "Hover to hear this word";
-      span.addEventListener("mouseenter", () => speakWordHover(span.dataset.word));
+      span.title = "Click to hear this word";
+      span.addEventListener("click", () => speakWordClick(span.dataset.word));
     }
     sentenceEl.appendChild(span);
     tokens.push(span);
