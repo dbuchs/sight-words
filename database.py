@@ -1,173 +1,160 @@
-import sqlite3
 import os
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
 
-DB_PATH = os.environ.get("DB_PATH", "/data/progress.db")
+import boto3
+from boto3.dynamodb.conditions import Key
+from botocore.exceptions import ClientError
 
 
-def get_db():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    conn.execute("PRAGMA foreign_keys = ON")
-    return conn
+AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
+DDB_ENDPOINT_URL = os.environ.get("DDB_ENDPOINT_URL")
+STUDENTS_TABLE = os.environ.get("DDB_STUDENTS_TABLE", "sight_words_students")
+PROGRESS_TABLE = os.environ.get("DDB_PROGRESS_TABLE", "sight_words_progress")
+
+
+def _dynamodb_resource():
+    return boto3.resource("dynamodb", region_name=AWS_REGION, endpoint_url=DDB_ENDPOINT_URL)
+
+
+def _students_table():
+    return _dynamodb_resource().Table(STUDENTS_TABLE)
+
+
+def _progress_table():
+    return _dynamodb_resource().Table(PROGRESS_TABLE)
+
+
+def _now_str() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _to_decimal(value):
+    if isinstance(value, float):
+        return Decimal(str(value))
+    if isinstance(value, dict):
+        return {k: _to_decimal(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_to_decimal(v) for v in value]
+    return value
+
+
+def _from_decimal(value):
+    if isinstance(value, Decimal):
+        if value % 1 == 0:
+            return int(value)
+        return float(value)
+    if isinstance(value, dict):
+        return {k: _from_decimal(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_from_decimal(v) for v in value]
+    return value
 
 
 def init_db():
-    conn = get_db()
+    """Bootstrap metadata and ensure the default student exists."""
+    table = _students_table()
 
-    # Create students table (with optional PIN)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS students (
-            id   INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT UNIQUE NOT NULL,
-            pin  TEXT
+    # Create/initialize metadata counter item.
+    table.update_item(
+        Key={"student_id": 0},
+        UpdateExpression="SET next_student_id = if_not_exists(next_student_id, :next)",
+        ExpressionAttributeValues={":next": 1},
+    )
+
+    # Ensure default student exists and advance counter as needed.
+    try:
+        table.put_item(
+            Item={"student_id": 1, "name": "Default", "pin": None},
+            ConditionExpression="attribute_not_exists(student_id)",
         )
-    """)
+        table.update_item(
+            Key={"student_id": 0},
+            UpdateExpression="SET next_student_id = :next",
+            ExpressionAttributeValues={":next": 2},
+        )
+    except ClientError as exc:
+        if exc.response["Error"]["Code"] != "ConditionalCheckFailedException":
+            raise
 
-    # Migrate: add pin column if it doesn't exist yet
-    student_cols = [r[1] for r in conn.execute("PRAGMA table_info(students)").fetchall()]
-    if "pin" not in student_cols:
-        conn.execute("ALTER TABLE students ADD COLUMN pin TEXT")
-
-    # Ensure a default student exists so student_id=1 always resolves
-    conn.execute("INSERT OR IGNORE INTO students (id, name) VALUES (1, 'Default')")
-
-    # Migrate word_progress if it has the legacy single-column primary key.
-    # We detect this by checking whether 'student_id' is already a column.
-    existing_cols = [
-        r[1] for r in conn.execute("PRAGMA table_info(word_progress)").fetchall()
-    ]
-    if existing_cols and "student_id" not in existing_cols:
-        # Rename legacy table, create new schema, copy data, drop legacy.
-        conn.execute("ALTER TABLE word_progress RENAME TO word_progress_legacy")
-        existing_cols = []  # force CREATE TABLE below
-
-    if not existing_cols:
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS word_progress (
-                student_id  INTEGER NOT NULL DEFAULT 1,
-                word        TEXT NOT NULL,
-                level       TEXT NOT NULL DEFAULT 'pre-primer',
-                correct     INTEGER NOT NULL DEFAULT 0,
-                attempts    INTEGER NOT NULL DEFAULT 0,
-                last_seen   TEXT,
-                status      TEXT NOT NULL DEFAULT 'unseen',
-                next_review TEXT,
-                PRIMARY KEY (student_id, word),
-                FOREIGN KEY (student_id) REFERENCES students(id)
-            )
-        """)
-        # Copy legacy rows if they exist
-        legacy = conn.execute(
-            "SELECT name FROM sqlite_master WHERE type='table' AND name='word_progress_legacy'"
-        ).fetchone()
-        if legacy:
-            conn.execute("""
-                INSERT INTO word_progress (student_id, word, level, correct, attempts, last_seen, status)
-                SELECT 1, word, level, correct, attempts, last_seen, status
-                FROM word_progress_legacy
-            """)
-            conn.execute("DROP TABLE word_progress_legacy")
-    else:
-        # Table already has the new schema — ensure next_review column exists (migration)
-        conn.execute("""
-            CREATE TABLE IF NOT EXISTS word_progress (
-                student_id  INTEGER NOT NULL DEFAULT 1,
-                word        TEXT NOT NULL,
-                level       TEXT NOT NULL DEFAULT 'pre-primer',
-                correct     INTEGER NOT NULL DEFAULT 0,
-                attempts    INTEGER NOT NULL DEFAULT 0,
-                last_seen   TEXT,
-                status      TEXT NOT NULL DEFAULT 'unseen',
-                next_review TEXT,
-                PRIMARY KEY (student_id, word),
-                FOREIGN KEY (student_id) REFERENCES students(id)
-            )
-        """)
-        if "next_review" not in existing_cols:
-            conn.execute("ALTER TABLE word_progress ADD COLUMN next_review TEXT")
-
-    conn.commit()
-    conn.close()
-
-
-# ---------------------------------------------------------------------------
-# Student helpers
-# ---------------------------------------------------------------------------
 
 def create_student(name: str, pin: str = None) -> dict:
-    conn = get_db()
-    conn.execute("INSERT OR IGNORE INTO students (name, pin) VALUES (?, ?)", (name.strip(), pin or None))
-    conn.commit()
-    row = conn.execute("SELECT * FROM students WHERE name = ?", (name.strip(),)).fetchone()
-    conn.close()
-    return _mask_student(dict(row))
+    clean_name = name.strip()
+    if not clean_name:
+        raise ValueError("name is required")
+
+    # Preserve previous behavior where names are globally unique.
+    existing = _students_table().scan(
+        FilterExpression="#n = :name",
+        ExpressionAttributeNames={"#n": "name"},
+        ExpressionAttributeValues={":name": clean_name},
+    ).get("Items", [])
+    if existing:
+        return _mask_student(_from_decimal(existing[0]))
+
+    counter = _students_table().update_item(
+        Key={"student_id": 0},
+        UpdateExpression="ADD next_student_id :inc",
+        ExpressionAttributeValues={":inc": 1},
+        ReturnValues="UPDATED_NEW",
+    )
+    new_id = int(counter["Attributes"]["next_student_id"]) - 1
+
+    item = {"student_id": new_id, "name": clean_name, "pin": pin or None}
+    _students_table().put_item(Item=item)
+    return _mask_student(item)
 
 
 def verify_student_pin(student_id: int, pin: str) -> bool:
-    """Return True if the student has no PIN or the PIN matches."""
-    conn = get_db()
-    row = conn.execute("SELECT pin FROM students WHERE id = ?", (student_id,)).fetchone()
-    conn.close()
+    row = _students_table().get_item(Key={"student_id": int(student_id)}).get("Item")
     if row is None:
         return False
-    stored_pin = row["pin"]
+    stored_pin = row.get("pin")
     if not stored_pin:
-        return True  # no PIN set — always allowed
+        return True
     return stored_pin == pin
 
 
 def update_student_pin(student_id: int, pin: str = None):
-    """Set or remove a student's PIN. Pass None to remove."""
-    conn = get_db()
-    conn.execute("UPDATE students SET pin = ? WHERE id = ?", (pin or None, student_id))
-    conn.commit()
-    conn.close()
+    _students_table().update_item(
+        Key={"student_id": int(student_id)},
+        UpdateExpression="SET pin = :pin",
+        ExpressionAttributeValues={":pin": pin or None},
+    )
 
 
 def _mask_student(row: dict) -> dict:
-    """Replace raw PIN with a has_pin boolean to avoid exposing PINs via API."""
     d = dict(row)
     d["has_pin"] = bool(d.pop("pin", None))
     return d
 
 
 def get_students() -> list:
-    conn = get_db()
-    rows = conn.execute("SELECT * FROM students ORDER BY name").fetchall()
-    conn.close()
-    return [_mask_student(dict(r)) for r in rows]
+    items = _students_table().scan().get("Items", [])
+    students = [_mask_student(_from_decimal(r)) for r in items if int(r.get("student_id", 0)) != 0]
+    return sorted(students, key=lambda s: s["name"].lower())
 
 
 def get_student(student_id: int):
-    conn = get_db()
-    row = conn.execute("SELECT * FROM students WHERE id = ?", (student_id,)).fetchone()
-    conn.close()
-    return _mask_student(dict(row)) if row else None
+    row = _students_table().get_item(Key={"student_id": int(student_id)}).get("Item")
+    return _mask_student(_from_decimal(row)) if row else None
 
-
-# ---------------------------------------------------------------------------
-# Progress helpers
-# ---------------------------------------------------------------------------
 
 def get_progress(word=None, student_id: int = 1):
-    conn = get_db()
+    table = _progress_table()
+    sid = int(student_id)
     if word:
-        row = conn.execute(
-            "SELECT * FROM word_progress WHERE student_id = ? AND word = ?",
-            (student_id, word.lower()),
-        ).fetchone()
-        conn.close()
-        return dict(row) if row else None
-    rows = conn.execute(
-        "SELECT * FROM word_progress WHERE student_id = ? ORDER BY word",
-        (student_id,),
-    ).fetchall()
-    conn.close()
-    return [dict(r) for r in rows]
+        row = table.get_item(Key={"student_id": sid, "word": word.lower()}).get("Item")
+        return _from_decimal(row) if row else None
+
+    rows = table.query(
+        KeyConditionExpression=Key("student_id").eq(sid),
+    ).get("Items", [])
+    rows = [_from_decimal(r) for r in rows]
+    return sorted(rows, key=lambda r: r["word"])
 
 
 def _spaced_repetition_interval(correct_streak: int) -> int:
-    """Return review interval in days based on number of correct answers (simplified SM-2)."""
     intervals = [1, 3, 7, 14, 30]
     if correct_streak <= 0:
         return intervals[0]
@@ -176,55 +163,69 @@ def _spaced_repetition_interval(correct_streak: int) -> int:
 
 
 def record_attempt(word, correct: bool, student_id: int = 1):
-    conn = get_db()
-    word = word.lower()
-    row = conn.execute(
-        "SELECT * FROM word_progress WHERE student_id = ? AND word = ?",
-        (student_id, word),
-    ).fetchone()
+    table = _progress_table()
+    sid = int(student_id)
+    clean_word = word.lower()
+    row = table.get_item(Key={"student_id": sid, "word": clean_word}).get("Item")
+    now = _now_str()
 
     if row:
+        row = _from_decimal(row)
         new_correct = row["correct"] + (1 if correct else 0)
         new_attempts = row["attempts"] + 1
-        # Determine status
-        if new_correct / new_attempts >= 0.8 and new_attempts >= 3:
-            status = "learned"
-        elif new_correct / new_attempts < 0.5 and new_attempts >= 3:
-            status = "needs_work"
-        else:
-            status = "learning"
-        interval = _spaced_repetition_interval(new_correct)
-        # Build the interval modifier string safely from a controlled integer value
-        interval_mod = f"+{interval} days"
-        conn.execute(
-            """UPDATE word_progress
-               SET correct = ?, attempts = ?, last_seen = datetime('now'), status = ?,
-                   next_review = datetime('now', ?)
-               WHERE student_id = ? AND word = ?""",
-            (new_correct, new_attempts, status, interval_mod, student_id, word),
-        )
+    else:
+        new_correct = 1 if correct else 0
+        new_attempts = 1
+
+    accuracy = (new_correct / new_attempts) if new_attempts else 0
+    if accuracy >= 0.8 and new_attempts >= 3:
+        status = "learned"
+    elif accuracy < 0.5 and new_attempts >= 3:
+        status = "needs_work"
     else:
         status = "learning"
-        interval = _spaced_repetition_interval(1 if correct else 0)
-        interval_mod = f"+{interval} days"
-        conn.execute(
-            """INSERT INTO word_progress (student_id, word, correct, attempts, last_seen, status, next_review)
-               VALUES (?, ?, ?, 1, datetime('now'), ?, datetime('now', ?))""",
-            (student_id, word, 1 if correct else 0, status, interval_mod),
-        )
 
-    conn.commit()
-    conn.close()
-    return get_progress(word, student_id=student_id)
+    next_days = _spaced_repetition_interval(new_correct)
+    next_review = (datetime.now(timezone.utc) + timedelta(days=next_days)).strftime("%Y-%m-%d %H:%M:%S")
+
+    item = {
+        "student_id": sid,
+        "word": clean_word,
+        "level": (row.get("level") if row else "pre-primer") or "pre-primer",
+        "correct": new_correct,
+        "attempts": new_attempts,
+        "last_seen": now,
+        "status": status,
+        "next_review": next_review,
+    }
+    table.put_item(Item=_to_decimal(item))
+    return get_progress(clean_word, student_id=sid)
 
 
 def set_word_level(word, level, student_id: int = 1):
-    conn = get_db()
-    conn.execute(
-        """INSERT INTO word_progress (student_id, word, level, correct, attempts, status)
-           VALUES (?, ?, ?, 0, 0, 'unseen')
-           ON CONFLICT(student_id, word) DO UPDATE SET level = excluded.level""",
-        (student_id, word.lower(), level),
+    table = _progress_table()
+    sid = int(student_id)
+    clean_word = word.lower()
+    row = table.get_item(Key={"student_id": sid, "word": clean_word}).get("Item")
+
+    if row:
+        table.update_item(
+            Key={"student_id": sid, "word": clean_word},
+            UpdateExpression="SET #lvl = :level",
+            ExpressionAttributeNames={"#lvl": "level"},
+            ExpressionAttributeValues={":level": level},
+        )
+        return
+
+    table.put_item(
+        Item={
+            "student_id": sid,
+            "word": clean_word,
+            "level": level,
+            "correct": 0,
+            "attempts": 0,
+            "last_seen": None,
+            "status": "unseen",
+            "next_review": None,
+        }
     )
-    conn.commit()
-    conn.close()
