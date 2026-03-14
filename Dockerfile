@@ -1,15 +1,10 @@
-FROM python:3.12-slim
+FROM public.ecr.aws/lambda/python:3.12
 
-WORKDIR /app
+WORKDIR ${LAMBDA_TASK_ROOT}
 
-COPY requirements.txt .
+COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY . ./
 
-EXPOSE 5000
-
-ENV FLASK_APP=app.py
-ENV FLASK_DEBUG=0
-
-CMD ["python", "-m", "flask", "run", "--host=0.0.0.0", "--port=8000"]
+CMD ["lambda_handler.handler"]

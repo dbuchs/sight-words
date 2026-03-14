@@ -1,20 +1,23 @@
 services:
+  dynamodb-local:
+    image: amazon/dynamodb-local:2.5.4
+    command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"
+    ports:
+      - "8001:8000"
+
   web:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.local
     container_name: sight-words
-    expose:
-      - "8000"
-    networks:
-      - web
-    volumes:
-      - db_data:/data
-    env_file:
-      - /home/deploy/secrets/common.env
-    restart: unless-stopped
-
-volumes:
-  db_data:
-
-networks:
-  web:
-    external: true
+    ports:
+      - "8000:8000"
+    environment:
+      FLASK_APP: app.py
+      FLASK_DEBUG: "0"
+      AWS_REGION: us-east-1
+      DDB_ENDPOINT_URL: http://dynamodb-local:8000
+      DDB_STUDENTS_TABLE: sight_words_students
+      DDB_PROGRESS_TABLE: sight_words_progress
+    depends_on:
+      - dynamodb-local
