@@ -35,6 +35,31 @@
       {% endif %}
     </div>
 
+    {% if current_student %}
+    <div class="teacher-settings-card">
+      <div class="teacher-settings-copy">
+        <h2>Promotion Pace</h2>
+        <p class="subtitle">
+          Choose how quickly {{ current_student.name }} should be introduced to newer, harder sight words.
+        </p>
+      </div>
+      <div class="teacher-settings-controls">
+        <label for="promotion-mode-select" class="student-label">Per-student setting</label>
+        <select id="promotion-mode-select" class="student-select">
+          {% for mode, meta in promotion_modes.items() %}
+          <option value="{{ mode }}" {% if current_student.promotion_mode == mode %}selected{% endif %}>
+            {{ meta.label }}
+          </option>
+          {% endfor %}
+        </select>
+        <p id="promotion-mode-desc" class="setting-help">
+          {{ promotion_modes[current_student.promotion_mode].description if current_student.promotion_mode in promotion_modes else promotion_modes["standard"].description }}
+        </p>
+        <span id="promotion-mode-msg" class="pin-manage-msg hidden"></span>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- PIN management form (hidden by default) -->
     <div id="pin-manage-form" class="pin-manage-form hidden">
       <span class="student-label">
@@ -97,6 +122,10 @@
     const btnPinRemove = document.getElementById("btn-pin-remove");
     const btnPinCancel = document.getElementById("btn-pin-cancel");
     const pinManageMsg = document.getElementById("pin-manage-msg");
+    const promotionModeSelect = document.getElementById("promotion-mode-select");
+    const promotionModeDesc = document.getElementById("promotion-mode-desc");
+    const promotionModeMsg = document.getElementById("promotion-mode-msg");
+    const promotionModes = {{ promotion_modes | tojson }};
 
     if (btnManagePin) {
       btnManagePin.addEventListener("click", () => {
@@ -137,6 +166,29 @@
     }
     if (btnPinRemove) {
       btnPinRemove.addEventListener("click", () => savePinValue(null));
+    }
+
+    if (promotionModeSelect) {
+      promotionModeSelect.addEventListener("change", async () => {
+        const promotionMode = promotionModeSelect.value;
+        if (promotionModeDesc && promotionModes[promotionMode]) {
+          promotionModeDesc.textContent = promotionModes[promotionMode].description;
+        }
+        const res = await fetch(`/api/students/${studentId}/promotion-mode`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ promotion_mode: promotionMode }),
+        });
+        const data = await res.json();
+        if (res.ok) {
+          promotionModeMsg.textContent = "Promotion pace updated.";
+          promotionModeMsg.style.color = "var(--success)";
+        } else {
+          promotionModeMsg.textContent = data.error || "Error updating promotion pace.";
+          promotionModeMsg.style.color = "var(--danger)";
+        }
+        promotionModeMsg.classList.remove("hidden");
+      });
     }
   </script>
 </body>

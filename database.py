@@ -19,14 +19,18 @@ def init_db():
         CREATE TABLE IF NOT EXISTS students (
             id   INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT UNIQUE NOT NULL,
-            pin  TEXT
+            pin  TEXT,
+            promotion_mode TEXT NOT NULL DEFAULT 'standard'
         )
     """)
 
-    # Migrate: add pin column if it doesn't exist yet
+    # Migrate: add student columns if they don't exist yet
     student_cols = [r[1] for r in conn.execute("PRAGMA table_info(students)").fetchall()]
     if "pin" not in student_cols:
         conn.execute("ALTER TABLE students ADD COLUMN pin TEXT")
+    if "promotion_mode" not in student_cols:
+        conn.execute("ALTER TABLE students ADD COLUMN promotion_mode TEXT NOT NULL DEFAULT 'standard'")
+    conn.execute("UPDATE students SET promotion_mode = 'standard' WHERE promotion_mode IS NULL OR promotion_mode = ''")
 
     # Ensure a default student exists so student_id=1 always resolves
     conn.execute("INSERT OR IGNORE INTO students (id, name) VALUES (1, 'Default')")
@@ -94,9 +98,12 @@ def init_db():
 # Student helpers
 # ---------------------------------------------------------------------------
 
-def create_student(name: str, pin: str = None) -> dict:
+def create_student(name: str, pin: str = None, promotion_mode: str = "standard") -> dict:
     conn = get_db()
-    conn.execute("INSERT OR IGNORE INTO students (name, pin) VALUES (?, ?)", (name.strip(), pin or None))
+    conn.execute(
+        "INSERT OR IGNORE INTO students (name, pin, promotion_mode) VALUES (?, ?, ?)",
+        (name.strip(), pin or None, promotion_mode or "standard"),
+    )
     conn.commit()
     row = conn.execute("SELECT * FROM students WHERE name = ?", (name.strip(),)).fetchone()
     conn.close()
@@ -120,6 +127,17 @@ def update_student_pin(student_id: int, pin: str = None):
     """Set or remove a student's PIN. Pass None to remove."""
     conn = get_db()
     conn.execute("UPDATE students SET pin = ? WHERE id = ?", (pin or None, student_id))
+    conn.commit()
+    conn.close()
+
+
+def update_student_promotion_mode(student_id: int, promotion_mode: str = "standard"):
+    """Update how aggressively the student is promoted to new words."""
+    conn = get_db()
+    conn.execute(
+        "UPDATE students SET promotion_mode = ? WHERE id = ?",
+        (promotion_mode or "standard", student_id),
+    )
     conn.commit()
     conn.close()
 

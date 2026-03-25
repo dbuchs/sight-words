@@ -1,0 +1,1 @@
+{"errorMessage": "Unable to import module 'lambda_handler': cannot import name 'wsgi' from 'awsgi' (/var/lang/lib/python3.12/site-packages/awsgi/__init__.py)", "errorType": "Runtime.ImportModuleError", "requestId": "", "stackTrace": []}

@@ -16,6 +16,34 @@ load_dotenv()
 app = Flask(__name__)
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
 
+LEVEL_SEQUENCE = ["pre-primer", "primer", "grade1", "grade2", "grade3"]
+PROMOTION_MODES = {
+    "standard": {
+        "label": "Standard",
+        "description": "Original pacing. Follows the curriculum order closely.",
+        "min_accuracy": 1.01,
+        "min_words": 999,
+        "min_level_mastery": 1.01,
+        "level_window": 0,
+    },
+    "aggressive": {
+        "label": "Accelerated",
+        "description": "Starts introducing the next level once the current level is going well.",
+        "min_accuracy": 0.85,
+        "min_words": 5,
+        "min_level_mastery": 0.5,
+        "level_window": 1,
+    },
+    "fast_track": {
+        "label": "Fast Track",
+        "description": "Pushes strong readers into newer, harder words sooner.",
+        "min_accuracy": 0.9,
+        "min_words": 5,
+        "min_level_mastery": 0.35,
+        "level_window": 2,
+    },
+}
+
 # Initialise DB on startup regardless of how Flask is invoked
 db.init_db()
 
@@ -44,6 +72,9 @@ def _next_sight_word(student_id: int = 1, exclude_word: str = "", seen_words: li
     just_exclude = {exclude_word.lower()} if exclude_word else set()
 
     all_progress = {r["word"]: r for r in db.get_progress(student_id=student_id)}
+    student = db.get_student(student_id) or {}
+    promotion_mode = student.get("promotion_mode", "standard")
+    promotion_cfg = PROMOTION_MODES.get(promotion_mode, PROMOTION_MODES["standard"])
 
     # Compute overall accuracy for adaptive difficulty
     # (require a minimum of attempts/words to have reliable data)
@@ -82,7 +113,18 @@ def _next_sight_word(student_id: int = 1, exclude_word: str = "", seen_words: li
                 if prog and prog["status"] == "needs_work":
                     return word
 
-        # 3. Next unseen / learning / needs_work word in curriculum order
+        # 3. Promotion boost: for strong readers, pull in words from the next level sooner.
+        accelerated_word = _pick_accelerated_word(
+            all_progress,
+            skip,
+            accuracy,
+            attempted_count=len(attempted),
+            promotion_cfg=promotion_cfg,
+        )
+        if accelerated_word:
+            return accelerated_word
+
+        # 4. Next unseen / learning / needs_work word in curriculum order
         for word in ORDERED_SIGHT_WORDS:
             if skip(word):
                 continue
@@ -90,7 +132,7 @@ def _next_sight_word(student_id: int = 1, exclude_word: str = "", seen_words: li
             if prog is None or prog["status"] in ("unseen", "learning", "needs_work"):
                 return word
 
-        # 4. All learned — fall back to any needs_work word
+        # 5. All learned — fall back to any needs_work word
         for word in ORDERED_SIGHT_WORDS:
             if skip(word):
                 continue
@@ -104,6 +146,74 @@ def _next_sight_word(student_id: int = 1, exclude_word: str = "", seen_words: li
 def _now_str() -> str:
     """Return current UTC datetime as SQLite-compatible string."""
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _is_unfinished(prog: dict | None) -> bool:
+    return prog is None or prog["status"] in ("unseen", "learning", "needs_work")
+
+
+def _level_mastery(level: str, all_progress: dict) -> float:
+    words = [w for w in ORDERED_SIGHT_WORDS if WORD_LEVEL.get(w.lower()) == level]
+    if not words:
+        return 0.0
+    learned = sum(
+        1 for word in words
+        if (all_progress.get(word.lower()) or {}).get("status") == "learned"
+    )
+    return learned / len(words)
+
+
+def _pick_first_unfinished(levels: list[str], all_progress: dict, skip) -> str | None:
+    level_set = set(levels)
+    for word in ORDERED_SIGHT_WORDS:
+        if skip(word):
+            continue
+        if WORD_LEVEL.get(word.lower(), "pre-primer") not in level_set:
+            continue
+        if _is_unfinished(all_progress.get(word.lower())):
+            return word
+    return None
+
+
+def _pick_accelerated_word(
+    all_progress: dict,
+    skip,
+    accuracy: float | None,
+    attempted_count: int,
+    promotion_cfg: dict,
+) -> str | None:
+    if promotion_cfg["level_window"] <= 0:
+        return None
+    if accuracy is None or accuracy < promotion_cfg["min_accuracy"]:
+        return None
+    if attempted_count < promotion_cfg["min_words"]:
+        return None
+
+    current_level = None
+    for level in LEVEL_SEQUENCE:
+        has_unfinished = any(
+            _is_unfinished(all_progress.get(word.lower()))
+            for word in ORDERED_SIGHT_WORDS
+            if WORD_LEVEL.get(word.lower(), "pre-primer") == level
+        )
+        if has_unfinished:
+            current_level = level
+            break
+
+    if current_level is None:
+        return None
+
+    if _level_mastery(current_level, all_progress) < promotion_cfg["min_level_mastery"]:
+        return None
+
+    current_idx = LEVEL_SEQUENCE.index(current_level)
+    target_levels = LEVEL_SEQUENCE[
+        current_idx + 1: current_idx + 1 + promotion_cfg["level_window"]
+    ]
+    if not target_levels:
+        return None
+
+    return _pick_first_unfinished(target_levels, all_progress, skip)
 
 
 def _generate_sentence(sight_word: str, additional_context: str = "") -> str:
@@ -193,7 +303,7 @@ def teacher():
         words_data.append(prog)
 
     # Group by level
-    levels = ["pre-primer", "primer", "grade1", "grade2", "grade3"]
+    levels = LEVEL_SEQUENCE
     grouped = {lvl: [] for lvl in levels}
     for w in words_data:
         lvl = WORD_LEVEL.get(w["display_word"].lower(), "pre-primer")
@@ -208,6 +318,7 @@ def teacher():
         students=students,
         current_student=current_student,
         student_id=student_id,
+        promotion_modes=PROMOTION_MODES,
     )
 
 
@@ -243,6 +354,17 @@ def update_pin(student_id):
     pin = (data.get("pin") or "").strip() or None
     db.update_student_pin(student_id, pin)
     return jsonify({"ok": True})
+
+
+@app.route("/api/students/<int:student_id>/promotion-mode", methods=["PUT"])
+def update_promotion_mode(student_id):
+    """Update a student's promotion aggressiveness."""
+    data = request.get_json() or {}
+    promotion_mode = (data.get("promotion_mode") or "").strip()
+    if promotion_mode not in PROMOTION_MODES:
+        return jsonify({"error": "Invalid promotion mode"}), 400
+    db.update_student_promotion_mode(student_id, promotion_mode)
+    return jsonify({"ok": True, "promotion_mode": promotion_mode})
 
 
 @app.route("/api/generate-lesson", methods=["POST"])

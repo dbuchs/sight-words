@@ -1,0 +1,16 @@
+{
+  "version": "2.0",
+  "routeKey": "$default",
+  "rawPath": "/",
+  "rawQueryString": "",
+  "headers": {
+    "host": "apc6ngzhooa4hm3z7avn7sxsxy0ftovv.lambda-url.us-east-1.on.aws",
+    "user-agent": "Mozilla/5.0"
+  },
+  "requestContext": {
+    "httpMethod": "GET",
+    "domainName": "apc6ngzhooa4hm3z7avn7sxsxy0ftovv.lambda-url.us-east-1.on.aws"
+  },
+  "body": null,
+  "isBase64Encoded": false
+}

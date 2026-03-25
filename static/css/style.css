@@ -519,6 +519,41 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
   margin-bottom: 1rem;
 }
 
+.teacher-settings-card {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  background: linear-gradient(135deg, #ffffff 0%, #eef5ff 100%);
+  border: 1.5px solid #d0daf0;
+  border-radius: 16px;
+  padding: 1rem 1.1rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 2px 10px rgba(0,0,0,.05);
+}
+.teacher-settings-copy {
+  flex: 1 1 280px;
+}
+.teacher-settings-copy h2 {
+  text-align: left;
+  font-size: 1.15rem;
+  margin-bottom: .25rem;
+}
+.teacher-settings-copy .subtitle {
+  margin-bottom: 0;
+}
+.teacher-settings-controls {
+  flex: 1 1 280px;
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+}
+.setting-help {
+  color: var(--muted);
+  font-size: .9rem;
+  line-height: 1.4;
+}
+
 /* ── PIN management (teacher page) ── */
 .pin-manage-form {
   display: flex;
@@ -540,4 +575,10 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
 @media (max-width: 600px) {
   .sentence { font-size: 1.4rem; }
   .card { padding: 1.5rem 1rem; }
+  .teacher-settings-card {
+    padding: .9rem;
+  }
+  .teacher-settings-copy h2 {
+    text-align: center;
+  }
 }

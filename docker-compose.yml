@@ -9,7 +9,7 @@ services:
     volumes:
       - db_data:/data
     env_file:
-      - /home/deploy/secrets/common.env
+      - ~/secrets/common.env
     restart: unless-stopped
 
 volumes:
