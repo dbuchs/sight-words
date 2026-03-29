@@ -8,12 +8,6 @@ services:
       - web
     env_file:
       - ~/secrets/common.env
-    environment:
-      AWS_REGION: ${AWS_REGION:-us-east-2}
-      DYNAMODB_STUDENTS_TABLE: ${DYNAMODB_STUDENTS_TABLE:-sight_words_students}
-      DYNAMODB_PROGRESS_TABLE: ${DYNAMODB_PROGRESS_TABLE:-sight_words_progress}
-      DYNAMODB_META_TABLE: ${DYNAMODB_META_TABLE:-sight_words_meta}
-      SQLITE_MIGRATION_PATH: ${SQLITE_MIGRATION_PATH:-}
     restart: unless-stopped
     volumes:
       - ./progress.db:/app/progress.db:ro
