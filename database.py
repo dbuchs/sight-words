@@ -1,11 +1,14 @@
 import os
 import sqlite3
+import logging
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 
 import boto3
 from boto3.dynamodb.conditions import Key
 from botocore.exceptions import ClientError
+
+logger = logging.getLogger(__name__)
 
 
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
@@ -234,17 +237,34 @@ def _update_counter_from_existing_students():
 
 def _maybe_migrate_sqlite():
     if not SQLITE_MIGRATION_PATH:
+        logger.info("SQLite migration skipped: SQLITE_MIGRATION_PATH is not set.")
         return
     if not os.path.exists(SQLITE_MIGRATION_PATH):
+        logger.info("SQLite migration skipped: file not found at %s.", SQLITE_MIGRATION_PATH)
         return
     if _migration_done():
+        logger.info("SQLite migration skipped: migration marker already present.")
         return
     if _progress_has_data():
+        logger.info("SQLite migration skipped: DynamoDB progress table already has data.")
         return
 
+    logger.info("SQLite migration starting from %s.", SQLITE_MIGRATION_PATH)
     conn = sqlite3.connect(SQLITE_MIGRATION_PATH)
     conn.row_factory = sqlite3.Row
     try:
+        student_rows = conn.execute(
+            "SELECT COUNT(*) AS count FROM students"
+        ).fetchone()["count"]
+        progress_rows = conn.execute(
+            "SELECT COUNT(*) AS count FROM word_progress"
+        ).fetchone()["count"]
+        logger.info(
+            "SQLite migration found %s students and %s progress rows to import.",
+            student_rows,
+            progress_rows,
+        )
+
         with _students_table().batch_writer() as batch:
             for row in conn.execute(
                 "SELECT id, name, pin, COALESCE(promotion_mode, 'standard') AS promotion_mode FROM students"
@@ -282,6 +302,7 @@ def _maybe_migrate_sqlite():
             "imported_at": _now_str(),
         }
     )
+    logger.info("SQLite migration completed successfully.")
 
 
 def init_db():

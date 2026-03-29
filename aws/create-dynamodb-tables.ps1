@@ -9,6 +9,21 @@ $ErrorActionPreference = "Stop"
 
 Write-Host "Creating DynamoDB tables in $Region using on-demand billing..."
 
+$studentsGsiJson = @(
+    @{
+        IndexName = "name-index"
+        KeySchema = @(
+            @{
+                AttributeName = "name"
+                KeyType = "HASH"
+            }
+        )
+        Projection = @{
+            ProjectionType = "ALL"
+        }
+    }
+) | ConvertTo-Json -Compress
+
 aws dynamodb create-table `
   --region $Region `
   --table-name $StudentsTable `
@@ -19,7 +34,7 @@ aws dynamodb create-table `
     AttributeName=id,KeyType=HASH `
   --billing-mode PAY_PER_REQUEST `
   --global-secondary-indexes `
-    "[{\"IndexName\":\"name-index\",\"KeySchema\":[{\"AttributeName\":\"name\",\"KeyType\":\"HASH\"}],\"Projection\":{\"ProjectionType\":\"ALL\"}}]"
+    $studentsGsiJson
 
 aws dynamodb wait table-exists --region $Region --table-name $StudentsTable
 

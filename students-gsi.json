@@ -1,0 +1,16 @@
+@'
+[
+  {
+    "IndexName": "name-index",
+    "KeySchema": [
+      {
+        "AttributeName": "name",
+        "KeyType": "HASH"
+      }
+    ],
+    "Projection": {
+      "ProjectionType": "ALL"
+    }
+  }
+]
+'@ | Set-Content -Encoding UTF8 .\students-gsi.json
