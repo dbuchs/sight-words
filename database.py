@@ -152,6 +152,46 @@ def _ensure_meta_table():
     client.get_waiter("table_exists").wait(TableName=META_TABLE)
 
 
+def _key_schema_map(table_name: str) -> dict:
+    table = _dynamodb_client().describe_table(TableName=table_name)["Table"]
+    return {entry["KeyType"]: entry["AttributeName"] for entry in table.get("KeySchema", [])}
+
+
+def _validate_table_shape(table_name: str, *, hash_key: str, range_key: str = None):
+    schema = _key_schema_map(table_name)
+    actual_hash = schema.get("HASH")
+    actual_range = schema.get("RANGE")
+    if actual_hash != hash_key or actual_range != range_key:
+        expected = f"HASH={hash_key}" + (f", RANGE={range_key}" if range_key else "")
+        actual = f"HASH={actual_hash}" + (f", RANGE={actual_range}" if actual_range else "")
+        raise RuntimeError(
+            f"DynamoDB table '{table_name}' has the wrong key schema. "
+            f"Expected {expected}. Found {actual}."
+        )
+
+
+def _validate_table_config():
+    names = {
+        "DYNAMODB_STUDENTS_TABLE": STUDENTS_TABLE,
+        "DYNAMODB_PROGRESS_TABLE": PROGRESS_TABLE,
+        "DYNAMODB_META_TABLE": META_TABLE,
+    }
+    duplicates = {}
+    for env_name, table_name in names.items():
+        duplicates.setdefault(table_name, []).append(env_name)
+    collisions = {table_name: envs for table_name, envs in duplicates.items() if len(envs) > 1}
+    if collisions:
+        parts = [f"{table_name} <- {', '.join(envs)}" for table_name, envs in collisions.items()]
+        raise RuntimeError(
+            "DynamoDB table environment variables must point to three distinct tables. "
+            + "; ".join(parts)
+        )
+
+    _validate_table_shape(STUDENTS_TABLE, hash_key="id")
+    _validate_table_shape(PROGRESS_TABLE, hash_key="student_id", range_key="word")
+    _validate_table_shape(META_TABLE, hash_key="key")
+
+
 def _ensure_default_records():
     _students_table().put_item(
         Item={
@@ -248,6 +288,7 @@ def init_db():
     _ensure_students_table()
     _ensure_progress_table()
     _ensure_meta_table()
+    _validate_table_config()
     _ensure_meta_counter()
     try:
         _ensure_default_records()

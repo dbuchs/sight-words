@@ -11,7 +11,15 @@ from dotenv import load_dotenv
 import database as db
 from sight_words import ORDERED_SIGHT_WORDS, WORD_LEVEL
 
-load_dotenv()
+
+def _load_env():
+    shared_env = os.path.expanduser("~/secrets/common.env")
+    if os.path.exists(shared_env):
+        load_dotenv(shared_env)
+    load_dotenv()
+
+
+_load_env()
 
 app = Flask(__name__)
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
