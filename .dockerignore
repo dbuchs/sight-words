@@ -1,0 +1,12 @@
+.git
+.gitignore
+venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+*.db
+.env
+event.json
+policy.json
+response.json

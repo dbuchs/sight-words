@@ -1,0 +1,24 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "DynamoDbAccessForSightWords",
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:DescribeTable",
+        "dynamodb:CreateTable",
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:Query",
+        "dynamodb:Scan"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:us-east-1:ACCOUNT_ID:table/sight_words_students",
+        "arn:aws:dynamodb:us-east-1:ACCOUNT_ID:table/sight_words_students/index/*",
+        "arn:aws:dynamodb:us-east-1:ACCOUNT_ID:table/sight_words_progress",
+        "arn:aws:dynamodb:us-east-1:ACCOUNT_ID:table/sight_words_meta"
+      ]
+    }
+  ]
+}
