@@ -459,6 +459,7 @@ def record_attempt(word, correct: bool, student_id: int = 1):
             "level": level,
             "correct": new_correct,
             "attempts": new_attempts,
+            "interval": interval,
             "last_seen": _now_str(),
             "status": status,
             "next_review": _future_str(interval),
@@ -477,8 +478,36 @@ def set_word_level(word, level, student_id: int = 1):
         "level": level,
         "correct": existing["correct"] if existing else 0,
         "attempts": existing["attempts"] if existing else 0,
+        "interval": existing.get("interval", 1) if existing else 1,
         "last_seen": existing.get("last_seen") if existing else None,
         "status": existing["status"] if existing else "unseen",
         "next_review": existing.get("next_review") if existing else None,
     }
     _progress_table().put_item(Item=item)
+
+
+def update_word_schedule(
+    word,
+    *,
+    interval: int,
+    next_review: str,
+    student_id: int = 1,
+    level: str = "pre-primer",
+):
+    student_id = _coerce_student_id(student_id)
+    cleaned_word = word.lower().strip()
+    existing = get_progress(cleaned_word, student_id=student_id)
+
+    item = {
+        "student_id": student_id,
+        "word": cleaned_word,
+        "level": existing.get("level", level) if existing else level,
+        "correct": existing["correct"] if existing else 0,
+        "attempts": existing["attempts"] if existing else 0,
+        "interval": int(interval),
+        "last_seen": existing.get("last_seen") if existing else None,
+        "status": existing["status"] if existing else "unseen",
+        "next_review": next_review,
+    }
+    _progress_table().put_item(Item=item)
+    return get_progress(cleaned_word, student_id=student_id)

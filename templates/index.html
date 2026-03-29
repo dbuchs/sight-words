@@ -42,6 +42,35 @@
           <button id="btn-save-student" class="btn-primary btn-sm">Save</button>
           <button id="btn-cancel-student" class="btn-secondary btn-sm">Cancel</button>
         </div>
+        <div class="student-row">
+          <button id="btn-manage-words" class="btn-secondary btn-sm" type="button">Manage Words</button>
+        </div>
+        <div id="word-schedule-panel" class="word-schedule-panel hidden">
+          <div class="word-schedule-header">
+            <div>
+              <h3>Word Schedule</h3>
+              <p>Choose a word, then set its review interval and next due date.</p>
+            </div>
+            <button id="btn-close-word-panel" class="btn-secondary btn-sm" type="button">Close</button>
+          </div>
+          <label for="word-select" class="student-label">Word</label>
+          <select id="word-select" class="student-select"></select>
+          <div id="word-schedule-summary" class="word-schedule-summary">Loading word details...</div>
+          <div class="word-schedule-form">
+            <div class="word-schedule-field">
+              <label for="word-interval" class="student-label">Interval (days)</label>
+              <input id="word-interval" type="number" min="0" step="1" class="student-input" />
+            </div>
+            <div class="word-schedule-field">
+              <label for="word-next-review" class="student-label">Next due date</label>
+              <input id="word-next-review" type="date" class="student-input" />
+            </div>
+          </div>
+          <div class="student-row">
+            <button id="btn-save-word-schedule" class="btn-primary btn-sm" type="button">Save Schedule</button>
+            <span id="word-schedule-msg" class="pin-manage-msg hidden"></span>
+          </div>
+        </div>
       </div>
 
       <button id="btn-start" class="btn-primary big-btn">Start Learning ▶</button>
@@ -133,6 +162,9 @@
   <!-- Audio element for OpenAI TTS -->
   <audio id="tts-audio"></audio>
 
+  <script>
+    window.sightWords = {{ sight_words | tojson }};
+  </script>
   <script src="/static/js/app.js"></script>
 </body>
 </html>

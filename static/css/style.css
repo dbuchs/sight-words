@@ -505,6 +505,49 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
   flex-wrap: wrap;
   margin-top: .25rem;
 }
+.word-schedule-panel {
+  display: flex;
+  flex-direction: column;
+  gap: .75rem;
+  margin-top: .5rem;
+  padding: 1rem;
+  border: 1.5px solid #d0daf0;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #f7fbff 100%);
+}
+.word-schedule-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: .75rem;
+  flex-wrap: wrap;
+}
+.word-schedule-header h3 {
+  margin: 0;
+  color: var(--primary);
+  font-size: 1.1rem;
+}
+.word-schedule-header p {
+  color: var(--muted);
+  font-size: .9rem;
+}
+.word-schedule-summary {
+  background: #f0f6ff;
+  border-radius: 12px;
+  padding: .65rem .8rem;
+  color: var(--text);
+  font-size: .92rem;
+}
+.word-schedule-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: .75rem;
+}
+.word-schedule-field {
+  display: flex;
+  flex-direction: column;
+  gap: .35rem;
+}
 .btn-sm {
   font-size: .85rem !important;
   padding: .35rem 1rem !important;
@@ -575,6 +618,9 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
 @media (max-width: 600px) {
   .sentence { font-size: 1.4rem; }
   .card { padding: 1.5rem 1rem; }
+  .word-schedule-form {
+    grid-template-columns: 1fr;
+  }
   .teacher-settings-card {
     padding: .9rem;
   }

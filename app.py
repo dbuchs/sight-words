@@ -161,6 +161,23 @@ def _now_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
+def _parse_schedule_datetime(value: str) -> str:
+    """Convert date/datetime-local input into the app's stored timestamp format."""
+    cleaned = (value or "").strip()
+    if not cleaned:
+        raise ValueError("next_review is required")
+
+    for fmt in ("%Y-%m-%dT%H:%M", "%Y-%m-%d %H:%M:%S", "%Y-%m-%d"):
+        try:
+            parsed = datetime.strptime(cleaned, fmt)
+            if fmt == "%Y-%m-%d":
+                parsed = parsed.replace(hour=0, minute=0, second=0)
+            return parsed.strftime("%Y-%m-%d %H:%M:%S")
+        except ValueError:
+            continue
+    raise ValueError("Invalid next_review format")
+
+
 def _is_unfinished(prog: dict | None) -> bool:
     return prog is None or prog["status"] in ("unseen", "learning", "needs_work")
 
@@ -291,7 +308,7 @@ def _pick_test_words(sentence: str, sight_word: str, count: int = 2, student_id:
 @app.route("/")
 def index():
     students = db.get_students()
-    return render_template("index.html", students=students)
+    return render_template("index.html", students=students, sight_words=ORDERED_SIGHT_WORDS)
 
 
 @app.route("/teacher")
@@ -450,6 +467,35 @@ def get_word_progress(word):
     if prog is None:
         return jsonify({"word": word, "status": "unseen", "correct": 0, "attempts": 0}), 200
     return jsonify(prog)
+
+
+@app.route("/api/progress/<word>/schedule", methods=["PUT"])
+def update_word_schedule(word):
+    data = request.get_json() or {}
+    student_id = _resolve_student_id(data)
+
+    try:
+        interval = int(data.get("interval"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "interval must be a whole number"}), 400
+
+    if interval < 0:
+        return jsonify({"error": "interval must be zero or greater"}), 400
+
+    try:
+        next_review = _parse_schedule_datetime(data.get("next_review", ""))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+
+    level = WORD_LEVEL.get(word.lower(), "pre-primer")
+    updated = db.update_word_schedule(
+        word,
+        interval=interval,
+        next_review=next_review,
+        student_id=student_id,
+        level=level,
+    )
+    return jsonify(updated)
 
 
 @app.route("/api/tts", methods=["POST"])
