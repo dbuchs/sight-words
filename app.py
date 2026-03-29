@@ -2,6 +2,7 @@ import os
 import random
 import json
 import re
+import logging
 from datetime import datetime, timezone
 
 from flask import Flask, render_template, request, jsonify, Response
@@ -20,6 +21,10 @@ def _load_env():
 
 
 _load_env()
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO").upper(),
+    format="%(asctime)s %(levelname)s %(name)s %(message)s",
+)
 
 app = Flask(__name__)
 client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY", ""))
