@@ -15,6 +15,8 @@ services:
       DYNAMODB_META_TABLE: ${DYNAMODB_META_TABLE:-sight_words_meta}
       SQLITE_MIGRATION_PATH: ${SQLITE_MIGRATION_PATH:-}
     restart: unless-stopped
+    volumes:
+      - ./progress.db:/app/progress.db:ro
 
 networks:
   web:
