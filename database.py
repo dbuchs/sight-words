@@ -56,6 +56,13 @@ def _normalize_item(item):
     return _normalize_value(item or {})
 
 
+def _coerce_student_id(student_id) -> int:
+    try:
+        return int(student_id) if student_id is not None else 1
+    except (TypeError, ValueError):
+        return 1
+
+
 def _now_str() -> str:
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
@@ -220,6 +227,7 @@ def _maybe_migrate_sqlite():
                 """
             ).fetchall():
                 item = _normalize_item(dict(row))
+                item["student_id"] = _coerce_student_id(item.get("student_id"))
                 item["word"] = (item.get("word") or "").lower()
                 if item["word"]:
                     batch.put_item(Item=item)
@@ -334,6 +342,7 @@ def get_student(student_id: int, include_pin: bool = False):
 
 
 def get_progress(word=None, student_id: int = 1):
+    student_id = _coerce_student_id(student_id)
     if word:
         response = _progress_table().get_item(
             Key={"student_id": student_id, "word": word.lower()}
@@ -359,6 +368,7 @@ def get_progress(word=None, student_id: int = 1):
 
 
 def record_attempt(word, correct: bool, student_id: int = 1):
+    student_id = _coerce_student_id(student_id)
     cleaned_word = word.lower()
     row = get_progress(cleaned_word, student_id=student_id)
 
@@ -397,6 +407,7 @@ def record_attempt(word, correct: bool, student_id: int = 1):
 
 
 def set_word_level(word, level, student_id: int = 1):
+    student_id = _coerce_student_id(student_id)
     existing = get_progress(word, student_id=student_id)
     item = {
         "student_id": student_id,

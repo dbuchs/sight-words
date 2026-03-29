@@ -2,15 +2,22 @@
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Sid": "DynamoDbAccessForSightWords",
       "Effect": "Allow",
-      "Principal": "*",
-      "Action": "lambda:InvokeFunctionUrl",
-      "Resource": "arn:aws:lambda:us-east-1:302959948880:function:sight-words",
-      "Condition": {
-        "StringEquals": {
-          "lambda:FunctionUrlAuthType": "NONE"
-        }
-      }
+      "Action": [
+        "dynamodb:DescribeTable",
+        "dynamodb:GetItem",
+        "dynamodb:PutItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:Query",
+        "dynamodb:Scan"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:us-east-1:302959948880:table/sight_words_students",
+        "arn:aws:dynamodb:us-east-1:302959948880:table/sight_words_students/index/*",
+        "arn:aws:dynamodb:us-east-1:302959948880:table/sight_words_progress",
+        "arn:aws:dynamodb:us-east-1:302959948880:table/sight_words_meta"
+      ]
     }
   ]
 }
