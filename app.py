@@ -324,8 +324,10 @@ def teacher():
             "level": WORD_LEVEL.get(word.lower(), "pre-primer"),
             "correct": 0,
             "attempts": 0,
+            "interval": 1,
             "status": "unseen",
             "last_seen": None,
+            "next_review": None,
         })
         accuracy = round(prog["correct"] / prog["attempts"] * 100) if prog["attempts"] > 0 else 0
         prog["accuracy"] = accuracy
@@ -345,6 +347,7 @@ def teacher():
         "teacher.html",
         grouped=grouped,
         levels=levels,
+        words_data=words_data,
         students=students,
         current_student=current_student,
         student_id=student_id,

@@ -3,21 +3,20 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Teacher View – Sight Words</title>
+  <title>Teacher View - Sight Words</title>
   <link rel="stylesheet" href="/static/css/style.css" />
 </head>
 <body>
   <header>
     <div class="header-inner">
-      <span class="logo">⭐ Sight Words</span>
-      <a class="teacher-link" href="/">Student View 📖</a>
+      <span class="logo">Sight Words</span>
+      <a class="teacher-link" href="/">Student View</a>
     </div>
   </header>
 
   <main class="teacher-main">
     <h1>Progress Dashboard</h1>
 
-    <!-- Student selector -->
     <div class="teacher-student-bar">
       <label for="teacher-student-select" class="student-label">Student:</label>
       <select id="teacher-student-select" class="student-select"
@@ -30,8 +29,8 @@
         {% endif %}
       </select>
       {% if current_student %}
-      <span class="subtitle" style="margin:0"> — {{ current_student.name }}</span>
-      <button id="btn-manage-pin" class="btn-secondary btn-sm" title="Change or remove PIN">🔑 PIN</button>
+      <span class="subtitle teacher-student-name">{{ current_student.name }}</span>
+      <button id="btn-manage-pin" class="btn-secondary btn-sm" title="Change or remove PIN">PIN</button>
       {% endif %}
     </div>
 
@@ -60,7 +59,6 @@
     </div>
     {% endif %}
 
-    <!-- PIN management form (hidden by default) -->
     <div id="pin-manage-form" class="pin-manage-form hidden">
       <span class="student-label">
         {% if current_student and current_student.has_pin %}PIN is currently <strong>set</strong>.{% else %}No PIN is set.{% endif %}
@@ -72,45 +70,83 @@
       <span id="pin-manage-msg" class="pin-manage-msg hidden"></span>
     </div>
 
-    <p class="subtitle">Track each student's sight-word mastery.</p>
+    <p class="subtitle">Track each student's sight-word mastery and adjust scheduling directly in the table.</p>
 
-    <!-- Legend -->
     <div class="legend">
-      <span class="badge status-learned">Learned ✓</span>
+      <span class="badge status-learned">Learned</span>
       <span class="badge status-learning">Learning</span>
-      <span class="badge status-needs_work">Needs Work ⚠</span>
+      <span class="badge status-needs_work">Needs Work</span>
       <span class="badge status-unseen">Not Yet Seen</span>
     </div>
 
-    {% for level in levels %}
-    <section class="level-section">
-      <h2 class="level-title">{{ level | replace('-', ' ') | title }}</h2>
-      <div class="word-grid">
-        {% for w in grouped[level] %}
-        <div class="word-card status-{{ w.status }}" title="{{ w.display_word }}: {{ w.correct }}/{{ w.attempts }} correct ({{ w.accuracy }}%)">
-          <span class="wc-word">{{ w.display_word }}</span>
-          <div class="wc-bar-wrap">
-            <div class="wc-bar" style="width: {{ w.accuracy }}%;"></div>
-          </div>
-          <div class="wc-stats">
-            {% if w.attempts > 0 %}
-              {{ w.accuracy }}% &nbsp;·&nbsp; {{ w.attempts }} tries
-            {% else %}
-              —
-            {% endif %}
-          </div>
-          <span class="wc-status-icon">
-            {% if w.status == 'learned' %}✓
-            {% elif w.status == 'learning' %}…
-            {% elif w.status == 'needs_work' %}⚠
-            {% else %}·
-            {% endif %}
-          </span>
+    <div class="teacher-table-card">
+      <div class="teacher-table-header">
+        <div>
+          <h2>Word Manager</h2>
+          <p class="subtitle">Click the Interval or Next Due header to sort. Edit a row and save it in place.</p>
         </div>
-        {% endfor %}
+        <span id="table-status-msg" class="pin-manage-msg hidden"></span>
       </div>
-    </section>
-    {% endfor %}
+
+      <div class="table-wrap">
+        <table class="word-table">
+          <thead>
+            <tr>
+              <th data-sort-key="display_word" data-sort-type="text">Word</th>
+              <th data-sort-key="level" data-sort-type="text">Level</th>
+              <th data-sort-key="status" data-sort-type="text">Status</th>
+              <th data-sort-key="correct" data-sort-type="number">Correct</th>
+              <th data-sort-key="attempts" data-sort-type="number">Attempts</th>
+              <th data-sort-key="accuracy" data-sort-type="number">Accuracy</th>
+              <th class="sortable" data-sort-key="interval" data-sort-type="number">Interval</th>
+              <th class="sortable" data-sort-key="next_review" data-sort-type="date">Next Due</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="word-table-body">
+            {% for w in words_data %}
+            <tr class="word-table-row status-{{ w.status }}"
+                data-word="{{ w.display_word }}"
+                data-level="{{ w.level }}"
+                data-status="{{ w.status }}"
+                data-correct="{{ w.correct }}"
+                data-attempts="{{ w.attempts }}"
+                data-accuracy="{{ w.accuracy }}"
+                data-interval="{{ w.interval if w.interval is not none else 1 }}"
+                data-next-review="{{ (w.next_review or '')[:10] }}">
+              <td data-label="Word"><strong>{{ w.display_word }}</strong></td>
+              <td data-label="Level">{{ w.level | replace('-', ' ') | title }}</td>
+              <td data-label="Status">
+                <span class="badge status-{{ w.status }}">{{ w.status | replace('_', ' ') | title }}</span>
+              </td>
+              <td data-label="Correct">{{ w.correct }}</td>
+              <td data-label="Attempts">{{ w.attempts }}</td>
+              <td data-label="Accuracy">{{ w.accuracy }}%</td>
+              <td data-label="Interval">
+                <input
+                  class="student-input table-input"
+                  type="number"
+                  min="0"
+                  step="1"
+                  value="{{ w.interval if w.interval is not none else 1 }}"
+                />
+              </td>
+              <td data-label="Next Due">
+                <input
+                  class="student-input table-input"
+                  type="date"
+                  value="{{ (w.next_review or '')[:10] }}"
+                />
+              </td>
+              <td data-label="Action">
+                <button class="btn-primary btn-sm table-save-btn" type="button">Save</button>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
   </main>
 
   <script>
@@ -126,6 +162,107 @@
     const promotionModeDesc = document.getElementById("promotion-mode-desc");
     const promotionModeMsg = document.getElementById("promotion-mode-msg");
     const promotionModes = {{ promotion_modes | tojson }};
+    const tableStatusMsg = document.getElementById("table-status-msg");
+    const tableBody = document.getElementById("word-table-body");
+    const sortableHeaders = document.querySelectorAll(".word-table th[data-sort-key]");
+
+    let currentSort = { key: null, direction: "asc", type: "text" };
+
+    function setInlineMessage(element, message, type) {
+      element.textContent = message;
+      element.style.color = type === "error" ? "var(--danger)" : "var(--success)";
+      element.classList.remove("hidden");
+    }
+
+    function dataKeyForSort(key) {
+      return key.replace(/_([a-z])/g, (_match, letter) => letter.toUpperCase());
+    }
+
+    function parseSortValue(row, key, type) {
+      const raw = row.dataset[dataKeyForSort(key)] || "";
+      if (type === "number") {
+        return Number(raw || 0);
+      }
+      if (type === "date") {
+        return raw ? new Date(raw).getTime() : Number.POSITIVE_INFINITY;
+      }
+      return raw.toLowerCase();
+    }
+
+    function sortTable(key, type) {
+      const rows = Array.from(tableBody.querySelectorAll("tr"));
+      const direction = currentSort.key === key && currentSort.direction === "asc" ? "desc" : "asc";
+      currentSort = { key, direction, type };
+
+      rows.sort((a, b) => {
+        const aVal = parseSortValue(a, key, type);
+        const bVal = parseSortValue(b, key, type);
+        if (aVal < bVal) return direction === "asc" ? -1 : 1;
+        if (aVal > bVal) return direction === "asc" ? 1 : -1;
+        return a.dataset.word.localeCompare(b.dataset.word);
+      });
+
+      rows.forEach(row => tableBody.appendChild(row));
+
+      sortableHeaders.forEach(header => {
+        header.classList.remove("sorted-asc", "sorted-desc");
+        if (header.dataset.sortKey === key) {
+          header.classList.add(direction === "asc" ? "sorted-asc" : "sorted-desc");
+        }
+      });
+    }
+
+    async function saveWordRow(row) {
+      const word = row.dataset.word;
+      const intervalInput = row.querySelector('input[type="number"]');
+      const nextReviewInput = row.querySelector('input[type="date"]');
+      const saveButton = row.querySelector(".table-save-btn");
+      const interval = intervalInput.value.trim();
+      const nextReview = nextReviewInput.value;
+
+      if (interval === "" || !/^\d+$/.test(interval)) {
+        setInlineMessage(tableStatusMsg, `Interval for "${word}" must be a whole number.`, "error");
+        intervalInput.focus();
+        return;
+      }
+      if (!nextReview) {
+        setInlineMessage(tableStatusMsg, `Choose a next due date for "${word}".`, "error");
+        nextReviewInput.focus();
+        return;
+      }
+
+      saveButton.disabled = true;
+      saveButton.textContent = "Saving...";
+
+      const res = await fetch(`/api/progress/${encodeURIComponent(word)}/schedule`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          student_id: studentId,
+          interval: parseInt(interval, 10),
+          next_review: nextReview,
+        }),
+      });
+      const data = await res.json();
+
+      saveButton.disabled = false;
+      saveButton.textContent = "Save";
+
+      if (!res.ok) {
+        setInlineMessage(tableStatusMsg, data.error || `Could not update "${word}".`, "error");
+        return;
+      }
+
+      row.dataset.interval = String(data.interval ?? interval);
+      row.dataset.nextReview = (data.next_review || "").slice(0, 10);
+      intervalInput.value = data.interval ?? interval;
+      nextReviewInput.value = (data.next_review || "").slice(0, 10);
+      setInlineMessage(tableStatusMsg, `Saved schedule for "${word}".`, "success");
+
+      if (currentSort.key === "interval" || currentSort.key === "next_review") {
+        sortTable(currentSort.key, currentSort.type);
+      }
+    }
 
     if (btnManagePin) {
       btnManagePin.addEventListener("click", () => {
@@ -134,6 +271,7 @@
         if (pinNewValue) pinNewValue.value = "";
       });
     }
+
     if (btnPinCancel) {
       btnPinCancel.addEventListener("click", () => {
         pinManageForm.classList.add("hidden");
@@ -148,14 +286,10 @@
       });
       const data = await res.json();
       if (res.ok) {
-        pinManageMsg.textContent = pin ? "PIN updated." : "PIN removed.";
-        pinManageMsg.style.color = "var(--success)";
-        pinManageMsg.classList.remove("hidden");
+        setInlineMessage(pinManageMsg, pin ? "PIN updated." : "PIN removed.", "success");
         setTimeout(() => window.location.reload(), 1000);
       } else {
-        pinManageMsg.textContent = data.error || "Error updating PIN.";
-        pinManageMsg.style.color = "var(--danger)";
-        pinManageMsg.classList.remove("hidden");
+        setInlineMessage(pinManageMsg, data.error || "Error updating PIN.", "error");
       }
     }
 
@@ -164,6 +298,7 @@
         savePinValue((pinNewValue ? pinNewValue.value.trim() : "") || null);
       });
     }
+
     if (btnPinRemove) {
       btnPinRemove.addEventListener("click", () => savePinValue(null));
     }
@@ -181,15 +316,29 @@
         });
         const data = await res.json();
         if (res.ok) {
-          promotionModeMsg.textContent = "Promotion pace updated.";
-          promotionModeMsg.style.color = "var(--success)";
+          setInlineMessage(promotionModeMsg, "Promotion pace updated.", "success");
         } else {
-          promotionModeMsg.textContent = data.error || "Error updating promotion pace.";
-          promotionModeMsg.style.color = "var(--danger)";
+          setInlineMessage(promotionModeMsg, data.error || "Error updating promotion pace.", "error");
         }
-        promotionModeMsg.classList.remove("hidden");
       });
     }
+
+    if (tableBody) {
+      tableBody.addEventListener("click", event => {
+        const button = event.target.closest(".table-save-btn");
+        if (!button) return;
+        const row = button.closest("tr");
+        if (row) saveWordRow(row);
+      });
+    }
+
+    sortableHeaders.forEach(header => {
+      header.addEventListener("click", () => {
+        sortTable(header.dataset.sortKey, header.dataset.sortType || "text");
+      });
+    });
+
+    sortTable("display_word", "text");
   </script>
 </body>
 </html>

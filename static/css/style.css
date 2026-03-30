@@ -1,4 +1,4 @@
-/* ── Reset & base ── */
+﻿/* â”€â”€ Reset & base â”€â”€ */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
 :root {
@@ -22,7 +22,7 @@ body {
   min-height: 100vh;
 }
 
-/* ── Header ── */
+/* â”€â”€ Header â”€â”€ */
 header {
   background: var(--primary);
   color: #fff;
@@ -48,7 +48,7 @@ header {
 }
 .teacher-link:hover { background: rgba(255,255,255,.35); }
 
-/* ── Screens ── */
+/* â”€â”€ Screens â”€â”€ */
 #app {
   max-width: 720px;
   margin: 2rem auto;
@@ -67,13 +67,13 @@ header {
   gap: 1.25rem;
 }
 
-/* ── Start screen ── */
+/* â”€â”€ Start screen â”€â”€ */
 .mascot { font-size: 4rem; line-height: 1; }
 
 h1 { font-size: 2rem; color: var(--primary); text-align: center; }
 h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
 
-/* ── Buttons ── */
+/* â”€â”€ Buttons â”€â”€ */
 .btn-primary, .btn-secondary {
   border: none;
   border-radius: 999px;
@@ -104,7 +104,7 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
   margin-top: .5rem;
 }
 
-/* ── Lesson header ── */
+/* â”€â”€ Lesson header â”€â”€ */
 .lesson-header {
   width: 100%;
   display: flex;
@@ -131,7 +131,7 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
   font-size: .9rem;
 }
 
-/* ── Sentence ── */
+/* â”€â”€ Sentence â”€â”€ */
 #sentence-area {
   width: 100%;
   min-height: 5rem;
@@ -184,7 +184,7 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
   animation: shake .4s ease;
 }
 
-/* Hoverable words (listen & read phases only — not during tests) */
+/* Hoverable words (listen & read phases only â€” not during tests) */
 .word-token.hoverable { cursor: pointer; }
 .word-token.hoverable:hover {
   background: #dbeafe;
@@ -203,7 +203,7 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
   75%       { transform: translateX(6px); }
 }
 
-/* ── Audio pending indicator ── */
+/* â”€â”€ Audio pending indicator â”€â”€ */
 .audio-pending {
   display: flex;
   align-items: center;
@@ -265,7 +265,7 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
   color: #065f46;
 }
 
-/* ── Instructions ── */
+/* â”€â”€ Instructions â”€â”€ */
 .instruction-box {
   background: #f0f6ff;
   border-left: 4px solid var(--primary);
@@ -277,7 +277,7 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
   color: var(--text);
 }
 
-/* ── Feedback overlay ── */
+/* â”€â”€ Feedback overlay â”€â”€ */
 .feedback {
   font-size: 1.4rem;
   font-weight: 700;
@@ -294,7 +294,7 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* ── Phase dots ── */
+/* â”€â”€ Phase dots â”€â”€ */
 .phase-dots {
   display: flex;
   gap: .6rem;
@@ -310,7 +310,7 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
 .dot.active   { background: var(--primary); }
 .dot.done     { background: var(--success); }
 
-/* ── Complete screen ── */
+/* â”€â”€ Complete screen â”€â”€ */
 #round-summary {
   font-size: 1rem;
   text-align: center;
@@ -318,7 +318,7 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
 }
 #round-summary .score-line { font-size: 1.15rem; }
 
-/* ── Teacher page ── */
+/* â”€â”€ Teacher page â”€â”€ */
 .teacher-main {
   max-width: 1100px;
   margin: 2rem auto;
@@ -398,7 +398,7 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
 .badge.status-needs_work { background: #ffd6d6; color: #c0392b; }
 .badge.status-unseen     { background: #e2e8f0; color: #4a5568; }
 
-/* ── PIN screen ── */
+/* â”€â”€ PIN screen â”€â”€ */
 .pin-hint {
   color: var(--muted);
   font-size: .95rem;
@@ -457,7 +457,7 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
   max-width: 140px;
 }
 
-/* ── Student selector ── */
+/* â”€â”€ Student selector â”€â”€ */
 .student-select-wrap {
   width: 100%;
   display: flex;
@@ -553,7 +553,7 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
   padding: .35rem 1rem !important;
 }
 
-/* ── Teacher student bar ── */
+/* â”€â”€ Teacher student bar â”€â”€ */
 .teacher-student-bar {
   display: flex;
   align-items: center;
@@ -597,7 +597,7 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
   line-height: 1.4;
 }
 
-/* ── PIN management (teacher page) ── */
+/* â”€â”€ PIN management (teacher page) â”€â”€ */
 .pin-manage-form {
   display: flex;
   align-items: center;
@@ -625,6 +625,90 @@ h2 { font-size: 1.6rem; color: var(--primary); text-align: center; }
     padding: .9rem;
   }
   .teacher-settings-copy h2 {
+    text-align: center;
+  }
+}
+
+.teacher-student-name {
+  margin: 0;
+}
+
+.teacher-table-card {
+  background: var(--card-bg);
+  border: 1.5px solid #d0daf0;
+  border-radius: 16px;
+  padding: 1rem 1.1rem;
+  box-shadow: 0 2px 10px rgba(0,0,0,.05);
+}
+.teacher-table-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  margin-bottom: 1rem;
+}
+.teacher-table-header h2 {
+  text-align: left;
+  font-size: 1.15rem;
+  margin-bottom: .25rem;
+}
+.teacher-table-header .subtitle {
+  margin-bottom: 0;
+}
+.table-wrap {
+  overflow-x: auto;
+}
+.word-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 940px;
+}
+.word-table th,
+.word-table td {
+  padding: .7rem .75rem;
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  vertical-align: middle;
+}
+.word-table th {
+  font-size: .82rem;
+  letter-spacing: .02em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: #f8fbff;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+.word-table th[data-sort-key] {
+  cursor: pointer;
+  user-select: none;
+}
+.word-table th.sorted-asc,
+.word-table th.sorted-desc {
+  color: var(--primary);
+}
+.word-table th.sorted-asc::after {
+  content: " ^";
+}
+.word-table th.sorted-desc::after {
+  content: " v";
+}
+.word-table-row:hover {
+  background: #fbfdff;
+}
+.table-input {
+  min-width: 110px;
+}
+.word-table .badge {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+@media (max-width: 600px) {
+  .teacher-table-header h2 {
     text-align: center;
   }
 }
