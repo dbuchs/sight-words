@@ -253,10 +253,40 @@ async function speakWordTest(word, { onEnd = null } = {}) {
   }
 }
 
+/** On wrong click: say "You clicked [clickedWord]. The word was [targetWord]." */
+async function speakWrongClick(clickedWord, targetWord) {
+  function waitForAudioEnd() {
+    return new Promise(resolve => { ttsAudio.onended = resolve; });
+  }
+  try {
+    const blobs = await Promise.all([
+      fetchTtsBlobCached("You clicked"),
+      fetchTtsBlobCached(clickedWord, "word"),
+      fetchTtsBlobCached("The word was"),
+      fetchTtsBlobCached(targetWord, "word"),
+    ]);
+    showAudioPending();
+    for (const blob of blobs) {
+      if (ttsObjectUrl) URL.revokeObjectURL(ttsObjectUrl);
+      ttsObjectUrl = URL.createObjectURL(blob);
+      ttsAudio.src = ttsObjectUrl;
+      showAudioPlaying();
+      await ttsAudio.play();
+      await waitForAudioEnd();
+    }
+    hideAudioPending();
+  } catch (err) {
+    console.warn("TTS wrong-click error:", err);
+    resetAudioPending();
+  }
+}
+
 /** Pre-warm TTS cache for phrases that will definitely be needed. */
 function prewarmTtsCache() {
   const phrases = [
     "Click the word",
+    "You clicked",
+    "The word was",
     "Great job!",
     "Amazing! You got them all right!",
     "Good work! Keep practising!",
@@ -412,6 +442,15 @@ async function loadLesson(wordOverride) {
   lastSightWord = lesson.sight_word;
   sessionWords.add(lesson.sight_word);
 
+  // Pre-warm audio for every word in the practice sentence so wrong-click
+  // feedback plays instantly without an extra OpenAI round-trip.
+  const sentenceWords = [...new Set(
+    lesson.practice_sentence.split(/\s+/)
+      .map(w => w.replace(/[^a-zA-Z'-]/g, "").toLowerCase())
+      .filter(Boolean)
+  )];
+  sentenceWords.forEach(w => fetchTtsBlobCached(w, "word").catch(() => {}));
+
   sightWordDisplay.textContent = lesson.sight_word;
   phaseLabel.textContent = "Listen";
 
@@ -529,7 +568,7 @@ function onWordClick(e) {
     speak("Great job!");
   } else {
     showFeedback(`That's "${clicked}". The word was "${currentTest.word}".`, "wrong");
-    speak(`Not quite. The word was ${currentTest.word}.`);
+    speakWrongClick(clicked, currentTest.word);
   }
 
   btnReplay.classList.add("hidden");
