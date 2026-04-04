@@ -82,6 +82,17 @@ def _spaced_repetition_interval(correct_streak: int) -> int:
     return intervals[idx]
 
 
+def _normalize_progress_item(item: dict | None) -> dict | None:
+    if not item:
+        return None
+    normalized = _normalize_item(item)
+    if normalized.get("interval") is None and normalized.get("next_review"):
+        normalized["interval"] = _spaced_repetition_interval(
+            normalized.get("correct", 0)
+        )
+    return normalized
+
+
 def _mask_student(row: dict) -> dict:
     d = dict(row)
     d["has_pin"] = bool(d.pop("pin", None))
@@ -289,6 +300,7 @@ def _maybe_migrate_sqlite():
                 item = _normalize_item(dict(row))
                 item["student_id"] = _coerce_student_id(item.get("student_id"))
                 item["word"] = (item.get("word") or "").lower()
+                item["interval"] = _spaced_repetition_interval(item.get("correct", 0))
                 if item["word"]:
                     batch.put_item(Item=item)
     finally:
@@ -410,7 +422,7 @@ def get_progress(word=None, student_id: int = 1):
             Key={"student_id": student_id, "word": word.lower()}
         )
         item = response.get("Item")
-        return _normalize_item(item) if item else None
+        return _normalize_progress_item(item)
 
     table = _progress_table()
     items = []
@@ -426,7 +438,7 @@ def get_progress(word=None, student_id: int = 1):
             ExclusiveStartKey=response["LastEvaluatedKey"],
         )
         items.extend(response.get("Items", []))
-    return [_normalize_item(item) for item in items]
+    return [_normalize_progress_item(item) for item in items if item]
 
 
 def record_attempt(word, correct: bool, student_id: int = 1):

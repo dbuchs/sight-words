@@ -73,10 +73,12 @@ def _resolve_student_id(data: dict) -> int:
         return 1
 
 
-def _next_sight_word(student_id: int = 1, exclude_word: str = "", seen_words: list = None):
-    """Return the next sight word to teach based on current progress, spaced repetition,
-    and adaptive difficulty.  seen_words lists all words already shown this session so that
-    the same word is not repeated too soon."""
+def _next_sight_word_details(student_id: int = 1, exclude_word: str = "", seen_words: list = None):
+    """Return selection details for the next sight word.
+
+    seen_words lists all words already shown this session so that the same word
+    is not repeated too soon.
+    """
     # Build exclusion sets at two strictness levels so we can fall back gracefully
     # when most words have already been shown this session.
     session_seen = set(w.lower() for w in (seen_words or []))
@@ -88,6 +90,7 @@ def _next_sight_word(student_id: int = 1, exclude_word: str = "", seen_words: li
     student = db.get_student(student_id) or {}
     promotion_mode = student.get("promotion_mode", "standard")
     promotion_cfg = PROMOTION_MODES.get(promotion_mode, PROMOTION_MODES["standard"])
+    now_str = _now_str()
 
     # Compute overall accuracy for adaptive difficulty
     # (require a minimum of attempts/words to have reliable data)
@@ -102,9 +105,36 @@ def _next_sight_word(student_id: int = 1, exclude_word: str = "", seen_words: li
         total_a = sum(r["attempts"] for r in attempted)
         accuracy = total_c / total_a if total_a > 0 else 0
 
+    diagnostics = {
+        "student_id": student_id,
+        "student_name": student.get("name"),
+        "promotion_mode": promotion_mode,
+        "now_utc": now_str,
+        "exclude_word": exclude_word or None,
+        "seen_words": sorted(session_seen),
+        "attempted_word_count": len(attempted),
+        "overall_accuracy": round(accuracy, 4) if accuracy is not None else None,
+        "candidate_passes": [],
+    }
+
     # Try with full session exclusion first, then fall back to only exclude_word,
     # then no exclusion at all, to prevent infinite loops on small word lists.
-    for excl in (session_seen, just_exclude, set()):
+    for pass_name, excl in (
+        ("session_seen", session_seen),
+        ("exclude_only", just_exclude),
+        ("no_exclusions", set()),
+    ):
+        pass_info = {
+            "pass": pass_name,
+            "excluded_words": sorted(excl),
+            "due_learned": [],
+            "due_learning": [],
+            "needs_work": [],
+            "accelerated_candidate": None,
+            "curriculum_candidate": None,
+            "fallback_needs_work_candidate": None,
+        }
+
         def skip(word, _excl=excl):
             return word.lower() in _excl
 
@@ -114,8 +144,51 @@ def _next_sight_word(student_id: int = 1, exclude_word: str = "", seen_words: li
                 continue
             prog = all_progress.get(word.lower())
             if prog and prog["status"] == "learned" and prog.get("next_review"):
-                if prog["next_review"] <= _now_str():
-                    return word
+                if prog["next_review"] <= now_str:
+                    pass_info["due_learned"].append({
+                        "word": word,
+                        "next_review": prog.get("next_review"),
+                        "interval": prog.get("interval"),
+                        "status": prog.get("status"),
+                    })
+
+        for word in ORDERED_SIGHT_WORDS:
+            if skip(word):
+                continue
+            prog = all_progress.get(word.lower())
+            if prog and prog["status"] == "learning" and prog.get("next_review"):
+                if prog["next_review"] <= now_str:
+                    pass_info["due_learning"].append({
+                        "word": word,
+                        "next_review": prog.get("next_review"),
+                        "interval": prog.get("interval"),
+                        "status": prog.get("status"),
+                    })
+
+        pass_info["due_learned"].sort(
+            key=lambda candidate: candidate["next_review"]
+        )
+        pass_info["due_learning"].sort(
+            key=lambda candidate: candidate["next_review"]
+        )
+
+        if pass_info["due_learned"]:
+            selected = pass_info["due_learned"][0]["word"]
+            diagnostics["candidate_passes"].append(pass_info)
+            diagnostics["selected_word"] = selected
+            diagnostics["selected_reason"] = "due_learned_review"
+            diagnostics["selected_pass"] = pass_name
+            return diagnostics
+
+        # 1b. Overdue learning words should also be reviewed before we
+        # introduce accelerated words from later levels.
+        if pass_info["due_learning"]:
+            selected = pass_info["due_learning"][0]["word"]
+            diagnostics["candidate_passes"].append(pass_info)
+            diagnostics["selected_word"] = selected
+            diagnostics["selected_reason"] = "due_learning_review"
+            diagnostics["selected_pass"] = pass_name
+            return diagnostics
 
         # 2. Adaptive: if student is struggling, prioritise needs_work across all levels
         if accuracy is not None and accuracy < _STRUGGLING_THRESHOLD:
@@ -124,7 +197,19 @@ def _next_sight_word(student_id: int = 1, exclude_word: str = "", seen_words: li
                     continue
                 prog = all_progress.get(word.lower())
                 if prog and prog["status"] == "needs_work":
-                    return word
+                    pass_info["needs_work"].append({
+                        "word": word,
+                        "next_review": prog.get("next_review"),
+                        "interval": prog.get("interval"),
+                        "status": prog.get("status"),
+                    })
+            if pass_info["needs_work"]:
+                selected = pass_info["needs_work"][0]["word"]
+                diagnostics["candidate_passes"].append(pass_info)
+                diagnostics["selected_word"] = selected
+                diagnostics["selected_reason"] = "struggling_needs_work"
+                diagnostics["selected_pass"] = pass_name
+                return diagnostics
 
         # 3. Promotion boost: for strong readers, pull in words from the next level sooner.
         accelerated_word = _pick_accelerated_word(
@@ -135,7 +220,12 @@ def _next_sight_word(student_id: int = 1, exclude_word: str = "", seen_words: li
             promotion_cfg=promotion_cfg,
         )
         if accelerated_word:
-            return accelerated_word
+            pass_info["accelerated_candidate"] = accelerated_word
+            diagnostics["candidate_passes"].append(pass_info)
+            diagnostics["selected_word"] = accelerated_word
+            diagnostics["selected_reason"] = "accelerated_promotion"
+            diagnostics["selected_pass"] = pass_name
+            return diagnostics
 
         # 4. Next unseen / learning / needs_work word in curriculum order
         for word in ORDERED_SIGHT_WORDS:
@@ -143,7 +233,17 @@ def _next_sight_word(student_id: int = 1, exclude_word: str = "", seen_words: li
                 continue
             prog = all_progress.get(word.lower())
             if prog is None or prog["status"] in ("unseen", "learning", "needs_work"):
-                return word
+                pass_info["curriculum_candidate"] = {
+                    "word": word,
+                    "status": prog["status"] if prog else "unseen",
+                    "next_review": prog.get("next_review") if prog else None,
+                    "interval": prog.get("interval") if prog else None,
+                }
+                diagnostics["candidate_passes"].append(pass_info)
+                diagnostics["selected_word"] = word
+                diagnostics["selected_reason"] = "curriculum_first_unfinished"
+                diagnostics["selected_pass"] = pass_name
+                return diagnostics
 
         # 5. All learned — fall back to any needs_work word
         for word in ORDERED_SIGHT_WORDS:
@@ -151,9 +251,34 @@ def _next_sight_word(student_id: int = 1, exclude_word: str = "", seen_words: li
                 continue
             prog = all_progress.get(word.lower())
             if prog and prog["status"] == "needs_work":
-                return word
+                pass_info["fallback_needs_work_candidate"] = {
+                    "word": word,
+                    "next_review": prog.get("next_review"),
+                    "interval": prog.get("interval"),
+                    "status": prog.get("status"),
+                }
+                diagnostics["candidate_passes"].append(pass_info)
+                diagnostics["selected_word"] = word
+                diagnostics["selected_reason"] = "fallback_needs_work"
+                diagnostics["selected_pass"] = pass_name
+                return diagnostics
 
-    return ORDERED_SIGHT_WORDS[0]
+        diagnostics["candidate_passes"].append(pass_info)
+
+    diagnostics["selected_word"] = ORDERED_SIGHT_WORDS[0]
+    diagnostics["selected_reason"] = "default_first_word"
+    diagnostics["selected_pass"] = "fallback"
+    return diagnostics
+
+
+def _next_sight_word(student_id: int = 1, exclude_word: str = "", seen_words: list = None):
+    """Return the next sight word to teach based on current progress, spaced repetition,
+    and adaptive difficulty."""
+    return _next_sight_word_details(
+        student_id=student_id,
+        exclude_word=exclude_word,
+        seen_words=seen_words,
+    )["selected_word"]
 
 
 def _now_str() -> str:
@@ -205,6 +330,18 @@ def _pick_first_unfinished(levels: list[str], all_progress: dict, skip) -> str |
     return None
 
 
+def _pick_first_unseen(levels: list[str], all_progress: dict, skip) -> str | None:
+    level_set = set(levels)
+    for word in ORDERED_SIGHT_WORDS:
+        if skip(word):
+            continue
+        if WORD_LEVEL.get(word.lower(), "pre-primer") not in level_set:
+            continue
+        if all_progress.get(word.lower()) is None:
+            return word
+    return None
+
+
 def _pick_accelerated_word(
     all_progress: dict,
     skip,
@@ -243,7 +380,9 @@ def _pick_accelerated_word(
     if not target_levels:
         return None
 
-    return _pick_first_unfinished(target_levels, all_progress, skip)
+    # Promotion should introduce brand-new words from later levels sooner,
+    # not pull already-active review words forward.
+    return _pick_first_unseen(target_levels, all_progress, skip)
 
 
 def _generate_sentence(sight_word: str, additional_context: str = "") -> str:
@@ -407,9 +546,16 @@ def generate_lesson():
     student_id = _resolve_student_id(data)
     previous_word = data.get("previous_word", "")
     seen_words = data.get("seen_words") or []
-    sight_word = data.get("word") or _next_sight_word(
-        student_id=student_id, exclude_word=previous_word, seen_words=seen_words
-    )
+    requested_word = data.get("word")
+    if requested_word:
+        sight_word = requested_word
+    else:
+        selection_details = _next_sight_word_details(
+            student_id=student_id,
+            exclude_word=previous_word,
+            seen_words=seen_words,
+        )
+        sight_word = selection_details["selected_word"]
     sight_word_lower = sight_word.lower()
 
     # Ensure the word is in the DB
